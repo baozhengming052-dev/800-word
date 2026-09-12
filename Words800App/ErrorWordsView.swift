@@ -1,165 +1,54 @@
 import SwiftUI
 
-// MARK: - Error Words View
 struct ErrorWordsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @State private var sortBy: SortOption = .errorCount
-
-    enum SortOption: String, CaseIterable {
-        case errorCount = "错误次数"
-        case recent = "最近错误"
-
-        var icon: String {
-            switch self {
-            case .errorCount: return "arrow.up.arrow.down"
-            case .recent: return "clock"
-            }
-        }
+    @State private var sort: WordSort = .errors
+    @State private var hideMastered = false
+    @State private var editWord: Word?
+    @State private var cards = false
+    @State private var practice = false
+    @State private var selectedQuestions: [Question] = []
+    private var words: [Word] {
+        dataManager.sorted(dataManager.errorWords.filter { !hideMastered || dataManager.getStudyRecord(for: $0.id).masteryLevel != .mastered }, by: sort)
     }
-
-    var sortedErrorWords: [Word] {
-        let words = dataManager.errorWords
-
-        switch sortBy {
-        case .errorCount:
-            return words.sorted { word1, word2 in
-                let record1 = dataManager.getStudyRecord(for: word1.id)
-                let record2 = dataManager.getStudyRecord(for: word2.id)
-                return record1.errorCount > record2.errorCount
-            }
-        case .recent:
-            return words.sorted { word1, word2 in
-                let record1 = dataManager.getStudyRecord(for: word1.id)
-                let record2 = dataManager.getStudyRecord(for: word2.id)
-                return record1.lastStudyDate > record2.lastStudyDate
-            }
-        }
-    }
-
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                if dataManager.errorWords.isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.green)
-
-                        Text("太棒了！")
-                            .font(.title2)
-                            .fontWeight(.bold)
-
-                        Text("暂无错词记录")
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxHeight: .infinity)
-                } else {
-                    // Sort Options
+            List {
+                Section {
                     HStack {
-                        Text("排序方式:")
-                            .foregroundColor(.secondary)
-
-                        Picker("排序", selection: $sortBy) {
-                            ForEach(SortOption.allCases, id: \.self) { option in
-                                Label(option.rawValue, systemImage: option.icon)
-                                    .tag(option)
-                            }
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-
+                        Button { cards = true } label: { Label("词卡巩固", systemImage: "rectangle.on.rectangle") }.disabled(words.isEmpty)
                         Spacer()
+                        Button {
+                            let visible = Set(words.map { $0.word })
+                            selectedQuestions = Array(dataManager.practiceQuestions(type: "全部题型", category: "全部分类", errorsOnly: true, limit: dataManager.questions.count, includeArchived: true)
+                                .filter { $0.relatedWords.contains(where: visible.contains) }.prefix(20))
+                            if selectedQuestions.isEmpty { dataManager.message = "暂时没有关联题目，请先用词卡巩固。" } else { practice = true }
+                        } label: { Label("专项刷题", systemImage: "pencil") }.disabled(words.isEmpty)
+                    }.buttonStyle(.borderless)
+                    Picker("排序", selection: $sort) {
+                        Text("错误次数最多").tag(WordSort.errors)
+                        Text("最近学习").tag(WordSort.recent)
                     }
-                    .padding()
-                    .background(Color(.systemGray6))
-
-                    // Error Words List
-                    List(sortedErrorWords) { word in
-                        NavigationLink(destination: WordDetailView(word: word)) {
-                            ErrorWordRow(word: word)
+                    Toggle("隐藏已掌握词", isOn: $hideMastered)
+                }
+                Section("\(words.count) 个错词 · 点右侧编辑按钮可修改") {
+                    ForEach(words) { word in
+                        HStack {
+                            NavigationLink(destination: WordDetailView(word: word)) { WordRowView(word: word) }
+                            Button { editWord = word } label: { Image(systemName: "square.and.pencil") }
+                                .buttonStyle(.borderless).accessibilityLabel("编辑\(word.word)错误次数")
                         }
                     }
-                    .listStyle(PlainListStyle())
+                    if words.isEmpty {
+                        Text("这里会收集答错或选择“忘记”的词。你也可以在词条详情中手动录入错误次数。")
+                            .foregroundColor(.secondary).padding(.vertical)
+                    }
                 }
             }
             .navigationTitle("错词本")
-            .navigationBarItems(trailing:
-                Group {
-                    if !dataManager.errorWords.isEmpty {
-                        NavigationLink(destination: ErrorWordsPracticeView()) {
-                            Image(systemName: "flame.fill")
-                        }
-                    }
-                }
-            )
-        }
-    }
-}
-
-struct ErrorWordRow: View {
-    @EnvironmentObject var dataManager: DataManager
-    let word: Word
-
-    var studyRecord: StudyRecord {
-        dataManager.getStudyRecord(for: word.id)
-    }
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(word.word)
-                    .font(.headline)
-
-                Text(word.pinyin)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-
-                Text(word.meanings.first ?? "")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 5) {
-                Text("错\(studyRecord.errorCount)次")
-                    .font(.headline)
-                    .foregroundColor(.red)
-
-                Text(timeAgo(from: studyRecord.lastStudyDate))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(.vertical, 5)
-    }
-
-    private func timeAgo(from date: Date) -> String {
-        let interval = Date().timeIntervalSince(date)
-        let days = Int(interval / 86400)
-
-        if days == 0 {
-            return "今天"
-        } else if days == 1 {
-            return "昨天"
-        } else if days < 7 {
-            return "\(days)天前"
-        } else {
-            return "\(days / 7)周前"
-        }
-    }
-}
-
-// MARK: - Error Words Practice View
-struct ErrorWordsPracticeView: View {
-    @EnvironmentObject var dataManager: DataManager
-    @Environment(\.dismiss) var dismiss
-
-    var body: some View {
-        QuestionView(mode: .errorWords) {
-            dismiss()
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle("错词专项训练")
+            .sheet(item: $editWord) { ErrorCountEditor(word: $0) }
+            .sheet(isPresented: $cards) { StudySessionView(title: "巩固薄弱词", words: Array(words.prefix(20))) }
+            .fullScreenCover(isPresented: $practice) { PracticeSessionView(questions: selectedQuestions) }
+        }.navigationViewStyle(.stack)
     }
 }

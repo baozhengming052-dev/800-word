@@ -1,40 +1,32 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Word Model
 struct Word: Identifiable, Codable, Hashable {
     let id: UUID
     let word: String
     let pinyin: String
     let category: String
+    let subcategory: String
+    let section: String
     let meanings: [String]
     let keyPoints: String
     let confusableWords: [ConfusableWord]
     let examples: [Example]
-
-    init(id: UUID = UUID(), word: String, pinyin: String, category: String, meanings: [String], keyPoints: String, confusableWords: [ConfusableWord], examples: [Example]) {
-        self.id = id
-        self.word = word
-        self.pinyin = pinyin
-        self.category = category
-        self.meanings = meanings
-        self.keyPoints = keyPoints
-        self.confusableWords = confusableWords
-        self.examples = examples
-    }
+    let occurrences: [SourceOccurrence]
+    let sourceDeleted: Bool
+    var sourcePages: String { Array(Set(occurrences.map { $0.page })).sorted().map(String.init).joined(separator: "、") }
 }
-
-struct ConfusableWord: Codable, Hashable {
-    let word: String
-    let difference: String
+struct SourceOccurrence: Codable, Hashable {
+    let originalWord: String
+    let originalText: String
+    let category: String
+    let subcategory: String
+    let page: Int
+    let sourceDeleted: Bool
+    let correctionNote: String
 }
-
-struct Example: Codable, Hashable {
-    let sentence: String
-    let translation: String
-}
-
-// MARK: - Question Model
+struct ConfusableWord: Codable, Hashable { let word: String; let difference: String }
+struct Example: Codable, Hashable { let sentence: String; let translation: String }
 struct Question: Identifiable, Codable {
     let id: UUID
     let content: String
@@ -43,91 +35,61 @@ struct Question: Identifiable, Codable {
     let explanation: String
     let relatedWords: [String]
     let type: QuestionType
-    let source: String // "国考2023" etc
-
-    init(id: UUID = UUID(), content: String, options: [String], correctAnswer: Int, explanation: String, relatedWords: [String], type: QuestionType, source: String) {
-        self.id = id
-        self.content = content
-        self.options = options
-        self.correctAnswer = correctAnswer
-        self.explanation = explanation
-        self.relatedWords = relatedWords
-        self.type = type
-        self.source = source
-    }
+    let source: String
+    let sourceURL: String
 }
-
 enum QuestionType: String, Codable, CaseIterable {
     case realExam = "真题"
     case practice = "模拟题"
+    case definition = "释义自测"
 }
-
-// MARK: - User Study Record
-struct StudyRecord: Identifiable, Codable {
-    let id: UUID
-    let wordId: UUID
-    var errorCount: Int
-    var isFavorite: Bool
-    var masteryLevel: MasteryLevel
-    var personalNotes: String
-    var errorHistory: [ErrorRecord]
-    var lastStudyDate: Date
-
-    init(id: UUID = UUID(), wordId: UUID, errorCount: Int = 0, isFavorite: Bool = false, masteryLevel: MasteryLevel = .unknown, personalNotes: String = "", errorHistory: [ErrorRecord] = [], lastStudyDate: Date = Date()) {
-        self.id = id
-        self.wordId = wordId
-        self.errorCount = errorCount
-        self.isFavorite = isFavorite
-        self.masteryLevel = masteryLevel
-        self.personalNotes = personalNotes
-        self.errorHistory = errorHistory
-        self.lastStudyDate = lastStudyDate
-    }
-}
-
+struct Library: Codable { let schemaVersion: Int; let source: String; let words: [Word]; let questions: [Question] }
 enum MasteryLevel: String, Codable, CaseIterable {
-    case unknown = "未学习"
-    case learning = "学习中"
-    case familiar = "熟悉"
-    case mastered = "已掌握"
-
+    case unknown = "未学习", learning = "学习中", familiar = "熟悉", mastered = "已掌握"
     var color: Color {
-        switch self {
-        case .unknown: return .gray
-        case .learning: return .orange
-        case .familiar: return .blue
-        case .mastered: return .green
-        }
+        switch self { case .unknown: return .secondary; case .learning: return .orange; case .familiar: return .blue; case .mastered: return .green }
     }
 }
-
-struct ErrorRecord: Identifiable, Codable {
+// Stable event IDs make backup imports idempotent and preserve every note revision.
+struct StudyEvent: Identifiable, Codable, Equatable {
     let id: UUID
-    let date: Date
-    let questionId: UUID?
-    let context: String
-
-    init(id: UUID = UUID(), date: Date = Date(), questionId: UUID? = nil, context: String) {
-        self.id = id
-        self.date = date
-        self.questionId = questionId
-        self.context = context
+    let wordID: UUID?
+    let kind: String
+    let value: String
+    let timestamp: Double
+    let questionID: UUID?
+    init(id: UUID = UUID(), wordID: UUID? = nil, kind: String, value: String,
+         timestamp: Double = Date().timeIntervalSince1970 * 1000, questionID: UUID? = nil) {
+        self.id = id; self.wordID = wordID; self.kind = kind; self.value = value
+        self.timestamp = timestamp; self.questionID = questionID
     }
+    var date: Date { Date(timeIntervalSince1970: timestamp / 1000) }
 }
-
-// MARK: - Question Record
-struct QuestionRecord: Identifiable, Codable {
+struct StudySnapshot: Codable { var schemaVersion = 2; var events: [StudyEvent] = [] }
+struct StudyRecord {
+    var errorCount = 0
+    var isFavorite = false
+    var masteryLevel: MasteryLevel = .unknown
+    var personalNotes = ""
+    var noteHistory: [StudyEvent] = []
+    var errorHistory: [StudyEvent] = []
+    var lastStudyDate: Date = .distantPast
+    var lastErrorDate: Date = .distantPast
+    var reviewDate: Date = .distantPast
+    var nextReviewDate: Date = .distantFuture
+    var streak = 0
+    var reviewCount = 0
+}
+struct QuestionRecord: Identifiable {
     let id: UUID
     let questionId: UUID
-    var isCorrect: Bool
-    let answeredAt: Date
+    let isCorrect: Bool
     let selectedAnswer: Int
-
-    init(id: UUID = UUID(), questionId: UUID, isCorrect: Bool, answeredAt: Date = Date(), selectedAnswer: Int) {
-        self.id = id
-        self.questionId = questionId
-        self.isCorrect = isCorrect
-        self.answeredAt = answeredAt
-        self.selectedAnswer = selectedAnswer
-    }
+    let answeredAt: Date
+}
+enum WordSort: String, CaseIterable {
+    case original = "资料顺序", errors = "错误次数最多", recent = "最近学习"
+}
+enum AppStyle {
+    static let accent = Color(red: 0.06, green: 0.43, blue: 0.53)
 }

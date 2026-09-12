@@ -1,415 +1,179 @@
 import SwiftUI
 
-// MARK: - Practice View
 struct PracticeView: View {
     @EnvironmentObject var dataManager: DataManager
-    @State private var practiceMode: PracticeMode = .random
-    @State private var isStarted = false
-
-    enum PracticeMode: String, CaseIterable {
-        case random = "随机练习"
-        case byType = "分类练习"
-        case errorWords = "错词专项"
-
-        var icon: String {
-            switch self {
-            case .random: return "shuffle"
-            case .byType: return "list.bullet"
-            case .errorWords: return "exclamationmark.triangle.fill"
-            }
-        }
-
-        var description: String {
-            switch self {
-            case .random: return "随机抽取题目练习"
-            case .byType: return "按题目类型分类练习"
-            case .errorWords: return "针对错词强化训练"
-            }
-        }
-    }
-
+    @State private var type = "模拟题"
+    @State private var category = "全部分类"
+    @State private var count = 10
+    @State private var selectedQuestions: [Question] = []
+    @State private var presenting = false
     var body: some View {
         NavigationView {
-            if isStarted {
-                QuestionView(mode: practiceMode, onFinish: {
-                    isStarted = false
-                })
-            } else {
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Statistics
-                        VStack(spacing: 15) {
-                            Text("刷题统计")
-                                .font(.headline)
-
-                            HStack(spacing: 20) {
-                                StatItem(title: "总题数", value: "\(dataManager.questions.count)", color: .blue)
-                                StatItem(title: "已做", value: "\(doneCount)", color: .green)
-                                StatItem(title: "正确率", value: "\(accuracyRate)%", color: .orange)
-                            }
-                        }
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                        .padding(.horizontal)
-
-                        // Practice Modes
-                        VStack(alignment: .leading, spacing: 15) {
-                            Text("选择练习模式")
-                                .font(.headline)
-                                .padding(.horizontal)
-
-                            ForEach(PracticeMode.allCases, id: \.self) { mode in
-                                Button(action: {
-                                    practiceMode = mode
-                                    isStarted = true
-                                }) {
-                                    PracticeModeCard(mode: mode, isDisabled: mode == .errorWords && dataManager.errorWords.isEmpty)
-                                }
-                                .disabled(mode == .errorWords && dataManager.errorWords.isEmpty)
-                            }
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.top)
-                }
-                .navigationTitle("刷题")
-            }
-        }
-    }
-
-    private var doneCount: Int {
-        Set(dataManager.questionRecords.map { $0.questionId }).count
-    }
-
-    private var accuracyRate: Int {
-        guard !dataManager.questionRecords.isEmpty else { return 0 }
-        let correct = dataManager.questionRecords.filter { $0.isCorrect }.count
-        return Int(Double(correct) / Double(dataManager.questionRecords.count) * 100)
-    }
-}
-
-struct PracticeModeCard: View {
-    let mode: PracticeView.PracticeMode
-    let isDisabled: Bool
-
-    var body: some View {
-        HStack(spacing: 15) {
-            Image(systemName: mode.icon)
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 50, height: 50)
-                .background(isDisabled ? Color.gray : Color.blue)
-                .cornerRadius(10)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(mode.rawValue)
-                    .font(.headline)
-                    .foregroundColor(isDisabled ? .secondary : .primary)
-                Text(mode.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
-        .opacity(isDisabled ? 0.5 : 1)
-    }
-}
-
-// MARK: - Question View
-struct QuestionView: View {
-    @EnvironmentObject var dataManager: DataManager
-    let mode: PracticeView.PracticeMode
-    let onFinish: () -> Void
-
-    @State private var currentQuestionIndex = 0
-    @State private var selectedAnswer: Int? = nil
-    @State private var showingExplanation = false
-    @State private var questions: [Question] = []
-
-    var currentQuestion: Question? {
-        guard currentQuestionIndex < questions.count else { return nil }
-        return questions[currentQuestionIndex]
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Progress Bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color(.systemGray5))
-                        .frame(height: 4)
-
-                    Rectangle()
-                        .fill(Color.blue)
-                        .frame(width: geometry.size.width * progress, height: 4)
-                }
-            }
-            .frame(height: 4)
-
-            if let question = currentQuestion {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Question Number
-                        HStack {
-                            Text("第 \(currentQuestionIndex + 1) / \(questions.count) 题")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-
-                            Spacer()
-
-                            Text(question.source)
-                                .font(.caption)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.blue.opacity(0.2))
-                                .cornerRadius(8)
-                        }
-
-                        // Question Content
-                        Text(question.content)
-                            .font(.body)
-                            .lineSpacing(8)
-
-                        // Options
-                        ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-                            OptionButton(
-                                index: index,
-                                option: option,
-                                isSelected: selectedAnswer == index,
-                                isCorrect: index == question.correctAnswer,
-                                showResult: showingExplanation
-                            ) {
-                                if !showingExplanation {
-                                    selectedAnswer = index
-                                }
-                            }
-                        }
-
-                        // Explanation
-                        if showingExplanation {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Image(systemName: selectedAnswer == question.correctAnswer ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                        .foregroundColor(selectedAnswer == question.correctAnswer ? .green : .red)
-                                    Text(selectedAnswer == question.correctAnswer ? "回答正确！" : "回答错误")
-                                        .fontWeight(.semibold)
-                                }
-                                .font(.headline)
-
-                                Divider()
-
-                                Text("解析")
-                                    .font(.headline)
-                                Text(question.explanation)
-                                    .foregroundColor(.secondary)
-
-                                if !question.relatedWords.isEmpty {
-                                    Divider()
-
-                                    Text("相关词汇")
-                                        .font(.headline)
-
-                                    ForEach(question.relatedWords, id: \.self) { wordStr in
-                                        if let word = dataManager.words.first(where: { $0.word == wordStr }) {
-                                            NavigationLink(destination: WordDetailView(word: word)) {
-                                                HStack {
-                                                    Text(word.word)
-                                                        .foregroundColor(.blue)
-                                                    Text("(\(word.pinyin))")
-                                                        .font(.caption)
-                                                        .foregroundColor(.secondary)
-                                                    Spacer()
-                                                    Image(systemName: "chevron.right")
-                                                        .font(.caption)
-                                                        .foregroundColor(.secondary)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                        }
-
-                        Spacer(minLength: 20)
-                    }
-                    .padding()
-                }
-
-                // Bottom Button
-                VStack {
-                    if showingExplanation {
-                        Button(action: nextQuestion) {
-                            Text(currentQuestionIndex < questions.count - 1 ? "下一题" : "完成")
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .cornerRadius(12)
-                        }
-                        .padding()
-                    } else {
-                        Button(action: submitAnswer) {
-                            Text("提交答案")
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(selectedAnswer != nil ? Color.blue : Color.gray)
-                                .cornerRadius(12)
-                        }
-                        .disabled(selectedAnswer == nil)
-                        .padding()
-                    }
-                }
-            } else {
-                VStack {
-                    Spacer()
-                    Text("暂无题目")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            }
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: onFinish) {
+            Form {
+                Section {
                     HStack {
-                        Image(systemName: "chevron.left")
-                        Text("返回")
+                        StatItem(title: "已答题", value: "\(dataManager.questionRecords.count)", color: AppStyle.accent)
+                        StatItem(title: "正确率", value: "\(dataManager.accuracy)%", color: .green)
                     }
                 }
+                Section("本次练习") {
+                    Picker("题型", selection: $type) {
+                        Text("全部题型").tag("全部题型")
+                        ForEach(QuestionType.allCases, id: \.self) { item in
+                            Text("\(item.rawValue)（\(dataManager.questions.filter { $0.type == item }.count)）").tag(item.rawValue)
+                        }
+                    }
+                    Picker("词语分类", selection: $category) {
+                        Text("全部分类").tag("全部分类")
+                        ForEach(dataManager.categories, id: \.self) { Text($0).tag($0) }
+                    }
+                    Picker("每组题数", selection: $count) {
+                        ForEach([5, 10, 20, 50], id: \.self) { Text("\($0) 题").tag($0) }
+                    }
+                }
+                Section {
+                    Button { start(errorsOnly: false) } label: { Label(category == "全部分类" ? "开始随机练习" : "开始分类练习", systemImage: "play.fill") }
+                    Button { start(errorsOnly: true) } label: { Label("错词专项训练", systemImage: "arrow.triangle.2.circlepath") }
+                        .disabled(dataManager.errorWords.isEmpty)
+                }
+                Section("题库说明") {
+                    Text("模拟题是补充编写的逻辑填空练习；释义自测根据你的 PDF 生成，用于词义记忆。两类题分开标注。")
+                    Text("真题注明具体考试和公开出处；回忆版与参考解析不等同于官方答案。")
+                    Text("错词专项按错误次数优先选题。选定分类没有题目时会明确提示，可以切换到“释义自测”。")
+                }.font(.footnote).foregroundColor(.secondary)
             }
-        }
-        .onAppear {
-            loadQuestions()
-        }
+            .navigationTitle("刷题")
+            .fullScreenCover(isPresented: $presenting) { PracticeSessionView(questions: selectedQuestions) }
+        }.navigationViewStyle(.stack)
     }
-
-    private var progress: CGFloat {
-        guard !questions.isEmpty else { return 0 }
-        return CGFloat(currentQuestionIndex + 1) / CGFloat(questions.count)
-    }
-
-    private func loadQuestions() {
-        switch mode {
-        case .random:
-            questions = dataManager.questions.shuffled()
-        case .byType:
-            questions = dataManager.questions
-        case .errorWords:
-            let errorWordStrs = dataManager.errorWords.map { $0.word }
-            questions = dataManager.questions.filter { question in
-                question.relatedWords.contains(where: { errorWordStrs.contains($0) })
-            }.shuffled()
-        }
-    }
-
-    private func submitAnswer() {
-        guard let question = currentQuestion, let answer = selectedAnswer else { return }
-
-        dataManager.submitAnswer(questionId: question.id, selectedAnswer: answer)
-        showingExplanation = true
-    }
-
-    private func nextQuestion() {
-        if currentQuestionIndex < questions.count - 1 {
-            currentQuestionIndex += 1
-            selectedAnswer = nil
-            showingExplanation = false
-        } else {
-            onFinish()
-        }
+    private func start(errorsOnly: Bool) {
+        selectedQuestions = dataManager.practiceQuestions(type: type, category: category, errorsOnly: errorsOnly, limit: count, includeArchived: errorsOnly)
+        guard !selectedQuestions.isEmpty else { dataManager.message = "这个筛选条件下暂时没有题目，请更换题型或分类。"; return }
+        presenting = true
     }
 }
-
-struct OptionButton: View {
-    let index: Int
-    let option: String
-    let isSelected: Bool
-    let isCorrect: Bool
-    let showResult: Bool
-    let action: () -> Void
-
-    private let letters = ["A", "B", "C", "D"]
-
-    var backgroundColor: Color {
-        if !showResult {
-            return isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6)
-        }
-
-        if isCorrect {
-            return Color.green.opacity(0.1)
-        } else if isSelected {
-            return Color.red.opacity(0.1)
-        } else {
-            return Color(.systemGray6)
-        }
-    }
-
-    var borderColor: Color {
-        if !showResult {
-            return isSelected ? .blue : .clear
-        }
-
-        if isCorrect {
-            return .green
-        } else if isSelected {
-            return .red
-        } else {
-            return .clear
-        }
-    }
-
+struct PracticeSessionView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @Environment(\.dismiss) private var dismiss
+    let questions: [Question]
+    @State private var index = 0
+    @State private var selected: Int?
+    @State private var submitted = false
+    @State private var answers: [UUID: Int] = [:]
+    @State private var confirmExit = false
+    private var current: Question? { questions.indices.contains(index) ? questions[index] : nil }
+    private var correctCount: Int { questions.filter { answers[$0.id] == $0.correctAnswer }.count }
     var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 12) {
-                Text(letters[index])
-                    .fontWeight(.semibold)
-                    .foregroundColor(showResult ? (isCorrect ? .green : (isSelected ? .red : .primary)) : (isSelected ? .blue : .primary))
-                    .frame(width: 30, height: 30)
-                    .background(Circle().stroke(borderColor, lineWidth: 2))
-
-                Text(option)
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.leading)
-
-                Spacer()
-
-                if showResult {
-                    if isCorrect {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                    } else if isSelected {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
+        NavigationView {
+            Group {
+                if let question = current {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            HStack { Text("\(index + 1) / \(questions.count)"); Spacer(); Text(question.type.rawValue) }
+                                .font(.subheadline).foregroundColor(.secondary)
+                            ProgressView(value: Double(index), total: Double(max(1, questions.count)))
+                            Text(question.source).font(.caption).foregroundColor(AppStyle.accent)
+                            Text(question.content).font(.title3).lineSpacing(8).padding(.vertical, 10)
+                            ForEach(Array(question.options.enumerated()), id: \.offset) { option, text in
+                                Button { if !submitted { selected = option } } label: {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Text(String(["A", "B", "C", "D"][option])).font(.headline)
+                                        Text(text).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+                                        if submitted && option == question.correctAnswer { Image(systemName: "checkmark.circle.fill") }
+                                        else if submitted && selected == option { Image(systemName: "xmark.circle.fill") }
+                                    }.padding(18).foregroundColor(optionColor(option, question))
+                                        .background(optionColor(option, question).opacity(selected == option || submitted ? 0.09 : 0.04))
+                                        .cornerRadius(14)
+                                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected == option ? optionColor(option, question) : .clear, lineWidth: 1.5))
+                                }.buttonStyle(.plain).disabled(submitted)
+                            }
+                            if submitted { ExplanationBody(question: question, selectedAnswer: selected) }
+                        }.padding(20)
+                    }.id(index)
+                    .safeAreaInset(edge: .bottom) {
+                        Button {
+                            if submitted { index += 1; selected = nil; submitted = false }
+                            else if let answer = selected, dataManager.submitAnswer(questionId: question.id, selectedAnswer: answer) {
+                                answers[question.id] = answer; submitted = true
+                            }
+                        } label: {
+                            Text(submitted ? (index == questions.count - 1 ? "查看本组结果" : "下一题") : "提交答案")
+                                .frame(maxWidth: .infinity).padding(10)
+                        }.buttonStyle(.borderedProminent).disabled(selected == nil)
+                            .padding().background(.regularMaterial)
+                    }
+                } else {
+                    List {
+                        Section {
+                            VStack(spacing: 12) {
+                                Text("本组完成").font(.title.bold())
+                                Text("\(correctCount) / \(questions.count)").font(.system(size: 42, weight: .semibold, design: .rounded)).foregroundColor(AppStyle.accent)
+                                Text("答对题数 · 错误已记入错词本").foregroundColor(.secondary)
+                            }.frame(maxWidth: .infinity).padding(.vertical, 20)
+                        }
+                        Section("逐题回顾") {
+                            ForEach(questions) { question in
+                                NavigationLink(destination: QuestionExplanationView(question: question, selectedAnswer: answers[question.id])) {
+                                    Label(question.content, systemImage: answers[question.id] == question.correctAnswer ? "checkmark.circle" : "xmark.circle")
+                                        .foregroundColor(answers[question.id] == question.correctAnswer ? .green : .red).lineLimit(2)
+                                }
+                            }
+                        }
+                        Button("返回刷题") { dismiss() }
                     }
                 }
             }
-            .padding()
-            .background(backgroundColor)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(borderColor, lineWidth: 2)
-            )
-        }
-        .disabled(showResult)
+            .navigationTitle("逻辑填空与词义练习").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("结束") { confirmExit = true } } }
+            .confirmationDialog("已提交的答题记录会保留。结束本组练习？", isPresented: $confirmExit, titleVisibility: .visible) {
+                Button("结束练习") { dismiss() }
+                Button("继续答题", role: .cancel) {}
+            }
+        }.tint(AppStyle.accent)
+    }
+    private func optionColor(_ option: Int, _ q: Question) -> Color {
+        if submitted && option == q.correctAnswer { return .green }
+        if submitted && selected == option { return .red }
+        return selected == option ? AppStyle.accent : .primary
+    }
+}
+struct ExplanationBody: View {
+    @EnvironmentObject var dataManager: DataManager
+    let question: Question
+    let selectedAnswer: Int?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Divider()
+            Text("正确答案：\(["A", "B", "C", "D"][question.correctAnswer])").font(.headline).foregroundColor(.green)
+            if let answer = selectedAnswer, question.options.indices.contains(answer) {
+                Text("你的选择：\(["A", "B", "C", "D"][answer]) · \(answer == question.correctAnswer ? "正确" : "错误")").font(.subheadline)
+            }
+            Text(question.explanation).lineSpacing(6).textSelection(.enabled)
+            if !question.sourceURL.isEmpty, let url = URL(string: question.sourceURL) {
+                Link("查看公开出处（需浏览器联网）", destination: url).font(.caption)
+            }
+            Text("相关词条").font(.headline)
+            ForEach(question.relatedWords, id: \.self) { name in
+                if let word = dataManager.words.first(where: { $0.word == name }) {
+                    NavigationLink(destination: WordDetailView(word: word)) { Label(name, systemImage: "book") }
+                }
+            }
+        }.padding(18).background(Color(.secondarySystemGroupedBackground)).cornerRadius(16)
+    }
+}
+struct QuestionExplanationView: View {
+    let question: Question
+    let selectedAnswer: Int?
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text(question.source).font(.caption).foregroundColor(.secondary)
+                Text(question.content).font(.title3).lineSpacing(7)
+                ForEach(Array(question.options.enumerated()), id: \.offset) { i, option in
+                    Text("\(["A", "B", "C", "D"][i]). \(option)")
+                }
+                ExplanationBody(question: question, selectedAnswer: selectedAnswer)
+            }.padding(20)
+        }.navigationTitle("答案解析").navigationBarTitleDisplayMode(.inline)
     }
 }

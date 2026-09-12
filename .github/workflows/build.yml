@@ -2,48 +2,79 @@ name: Build IPA
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    runs-on: macos-latest
-
+    runs-on: macos-15
+    timeout-minutes: 30
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-    - name: Setup Xcode
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: latest-stable
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
 
-    - name: Show Xcode version
-      run: xcodebuild -version
+      - name: Validate content and project
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          python3 tools/validate_project.py
+          plutil -lint Words800App/Info.plist Words800App.xcodeproj/project.pbxproj
+          xcodebuild -list -project Words800App.xcodeproj
+          bash tools/verify_macos.sh
 
-    - name: Build Archive
-      run: |
-        xcodebuild archive \
-          -project Words800App.xcodeproj \
-          -scheme Words800App \
-          -archivePath $PWD/build/Words800App.xcarchive \
-          -sdk iphoneos \
-          -configuration Release \
-          -destination 'generic/platform=iOS' \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
+      - name: Build iPhone archive without distribution signing
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild archive \
+            -project Words800App.xcodeproj \
+            -scheme Words800App \
+            -archivePath "$PWD/build/Words800App.xcarchive" \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            -sdk iphoneos \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY='' \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build/xcodebuild.log
 
-    - name: Create IPA
-      run: |
-        mkdir -p Payload
-        cp -R build/Words800App.xcarchive/Products/Applications/Words800App.app Payload/
-        zip -r 800词学习助手.ipa Payload
-        rm -rf Payload
+      - name: Package and verify TrollStore IPA
+        run: |
+          set -euo pipefail
+          mkdir -p build/package/Payload
+          ditto build/Words800App.xcarchive/Products/Applications/Words800App.app build/package/Payload/Words800App.app
+          # TrollStore signs the app during installation; no Apple account is embedded.
+          cd build/package
+          /usr/bin/zip -q -r '../800词学习助手.ipa' Payload
+          cd ../..
+          python3 tools/validate_project.py --ipa 'build/800词学习助手.ipa'
+          cd build
+          shasum -a 256 '800词学习助手.ipa' > '800词学习助手.ipa.sha256'
 
-    - name: Upload IPA
-      uses: actions/upload-artifact@v4
-      with:
-        name: 800词学习助手
-        path: 800词学习助手.ipa
-        retention-days: 30
+      - name: Downloadable IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: 800词学习助手-IPA
+          path: |
+            build/800词学习助手.ipa
+            build/800词学习助手.ipa.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 14

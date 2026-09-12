@@ -31,3 +31,10 @@ Carthage/Build/
 
 # Archives
 *.xcarchive
+
+# Local verification / personal records
+tmp/
+__pycache__/
+*.pyc
+*.ipa
+*学习备份*.json

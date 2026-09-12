@@ -7,33 +7,37 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000011 /* Words800App.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001 /* Words800App.swift */; };
-		A10000012 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000002 /* ContentView.swift */; };
-		A10000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000003 /* Assets.xcassets */; };
-		A10000014 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000004 /* Models.swift */; };
-		A10000015 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000005 /* DataManager.swift */; };
-		A10000016 /* WordLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000006 /* WordLibraryView.swift */; };
-		A10000017 /* PracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000007 /* PracticeView.swift */; };
-		A10000018 /* ErrorWordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000008 /* ErrorWordsView.swift */; };
-		A10000019 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000009 /* ProfileView.swift */; };
+		000000000000000A10000032 /* LearningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000033 /* LearningEngine.swift */; };
+		000000000000000A10000030 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000031 /* Resources */; };
+		000000000000000A10000011 /* Words800App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000001 /* Words800App.swift */; };
+		000000000000000A10000012 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000002 /* ContentView.swift */; };
+		000000000000000A10000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000003 /* Assets.xcassets */; };
+		000000000000000A10000014 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000004 /* Models.swift */; };
+		000000000000000A10000015 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000005 /* DataManager.swift */; };
+		000000000000000A10000016 /* WordLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000006 /* WordLibraryView.swift */; };
+		000000000000000A10000017 /* PracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000007 /* PracticeView.swift */; };
+		000000000000000A10000018 /* ErrorWordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000008 /* ErrorWordsView.swift */; };
+		000000000000000A10000019 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000009 /* ProfileView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A10000001 /* Words800App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Words800App.swift; sourceTree = "<group>"; };
-		A10000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		A10000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A10000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		A10000005 /* DataManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataManager.swift; sourceTree = "<group>"; };
-		A10000006 /* WordLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordLibraryView.swift; sourceTree = "<group>"; };
-		A10000007 /* PracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeView.swift; sourceTree = "<group>"; };
-		A10000008 /* ErrorWordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorWordsView.swift; sourceTree = "<group>"; };
-		A10000009 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
-		A10000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A1000000A /* Words800App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Words800App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000A10000033 /* LearningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningEngine.swift; sourceTree = "<group>"; };
+		000000000000000A10000031 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
+		000000000000000A10000001 /* Words800App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Words800App.swift; sourceTree = "<group>"; };
+		000000000000000A10000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		000000000000000A10000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		000000000000000A10000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		000000000000000A10000005 /* DataManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataManager.swift; sourceTree = "<group>"; };
+		000000000000000A10000006 /* WordLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordLibraryView.swift; sourceTree = "<group>"; };
+		000000000000000A10000007 /* PracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeView.swift; sourceTree = "<group>"; };
+		000000000000000A10000008 /* ErrorWordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorWordsView.swift; sourceTree = "<group>"; };
+		000000000000000A10000009 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		000000000000000A10000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		000000000000000A1000000A /* Words800App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Words800App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		A1000000F /* Frameworks */ = {
+		000000000000000A1000000F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -43,49 +47,51 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A1000000B /* Words800App */ = {
+		000000000000000A1000000B /* Words800App */ = {
 			isa = PBXGroup;
 			children = (
-				A10000010 /* Info.plist */,
-				A10000001 /* Words800App.swift */,
-				A10000002 /* ContentView.swift */,
-				A10000004 /* Models.swift */,
-				A10000005 /* DataManager.swift */,
-				A10000006 /* WordLibraryView.swift */,
-				A10000007 /* PracticeView.swift */,
-				A10000008 /* ErrorWordsView.swift */,
-				A10000009 /* ProfileView.swift */,
-				A10000003 /* Assets.xcassets */,
+				000000000000000A10000010 /* Info.plist */,
+				000000000000000A10000001 /* Words800App.swift */,
+				000000000000000A10000002 /* ContentView.swift */,
+				000000000000000A10000004 /* Models.swift */,
+				000000000000000A10000005 /* DataManager.swift */,
+				000000000000000A10000033 /* LearningEngine.swift */,
+				000000000000000A10000006 /* WordLibraryView.swift */,
+				000000000000000A10000007 /* PracticeView.swift */,
+				000000000000000A10000008 /* ErrorWordsView.swift */,
+				000000000000000A10000009 /* ProfileView.swift */,
+				000000000000000A10000003 /* Assets.xcassets */,
+				000000000000000A10000031 /* Resources */,
 			);
 			path = Words800App;
 			sourceTree = "<group>";
 		};
-		A1000000C /* Products */ = {
+		000000000000000A1000000C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A1000000A /* Words800App.app */,
+				000000000000000A1000000A /* Words800App.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A1000000D = {
+		000000000000000A1000000D = {
 			isa = PBXGroup;
 			children = (
-				A1000000B /* Words800App */,
-				A1000000C /* Products */,
+				000000000000000A1000000B /* Words800App */,
+				000000000000000A1000000C /* Products */,
 			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A1000000E /* Words800App */ = {
+		000000000000000A1000000E /* Words800App */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A10000020 /* Build configuration list for PBXNativeTarget "Words800App" */;
+			buildConfigurationList = 000000000000000A10000020 /* Build configuration list for PBXNativeTarget "Words800App" */;
 			buildPhases = (
-				A10000021 /* Sources */,
-				A1000000F /* Frameworks */,
-				A10000022 /* Resources */,
+				000000000000000A10000021 /* Sources */,
+				000000000000000A1000000F /* Frameworks */,
+				000000000000000A10000022 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -93,25 +99,25 @@
 			);
 			name = Words800App;
 			productName = Words800App;
-			productReference = A1000000A /* Words800App.app */;
+			productReference = 000000000000000A1000000A /* Words800App.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		A10000023 /* Project object */ = {
+		000000000000000A10000023 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
-					A1000000E = {
+					000000000000000A1000000E = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
-			buildConfigurationList = A10000024 /* Build configuration list for PBXProject "Words800App" */;
+			buildConfigurationList = 000000000000000A10000024 /* Build configuration list for PBXProject "Words800App" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
@@ -120,47 +126,49 @@
 				Base,
 				"zh-Hans",
 			);
-			mainGroup = A1000000D;
-			productRefGroup = A1000000C /* Products */;
+			mainGroup = 000000000000000A1000000D;
+			productRefGroup = 000000000000000A1000000C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A1000000E /* Words800App */,
+				000000000000000A1000000E /* Words800App */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		A10000022 /* Resources */ = {
+		000000000000000A10000022 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000013 /* Assets.xcassets in Resources */,
+				000000000000000A10000013 /* Assets.xcassets in Resources */,
+				000000000000000A10000030 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A10000021 /* Sources */ = {
+		000000000000000A10000021 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A10000011 /* Words800App.swift in Sources */,
-				A10000012 /* ContentView.swift in Sources */,
-				A10000014 /* Models.swift in Sources */,
-				A10000015 /* DataManager.swift in Sources */,
-				A10000016 /* WordLibraryView.swift in Sources */,
-				A10000017 /* PracticeView.swift in Sources */,
-				A10000018 /* ErrorWordsView.swift in Sources */,
-				A10000019 /* ProfileView.swift in Sources */,
+				000000000000000A10000011 /* Words800App.swift in Sources */,
+				000000000000000A10000012 /* ContentView.swift in Sources */,
+				000000000000000A10000014 /* Models.swift in Sources */,
+				000000000000000A10000015 /* DataManager.swift in Sources */,
+				000000000000000A10000032 /* LearningEngine.swift in Sources */,
+				000000000000000A10000016 /* WordLibraryView.swift in Sources */,
+				000000000000000A10000017 /* PracticeView.swift in Sources */,
+				000000000000000A10000018 /* ErrorWordsView.swift in Sources */,
+				000000000000000A10000019 /* ProfileView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		A10000025 /* Debug */ = {
+		000000000000000A10000025 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -224,7 +232,7 @@
 			};
 			name = Debug;
 		};
-		A10000026 /* Release */ = {
+		000000000000000A10000026 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -281,14 +289,14 @@
 			};
 			name = Release;
 		};
-		A10000027 /* Debug */ = {
+		000000000000000A10000027 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
@@ -303,7 +311,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.peanut13.words800;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -312,14 +320,14 @@
 			};
 			name = Debug;
 		};
-		A10000028 /* Release */ = {
+		000000000000000A10000028 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
@@ -334,7 +342,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.peanut13.words800;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -346,25 +354,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A10000020 /* Build configuration list for PBXNativeTarget "Words800App" */ = {
+		000000000000000A10000020 /* Build configuration list for PBXNativeTarget "Words800App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A10000027 /* Debug */,
-				A10000028 /* Release */,
+				000000000000000A10000027 /* Debug */,
+				000000000000000A10000028 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A10000024 /* Build configuration list for PBXProject "Words800App" */ = {
+		000000000000000A10000024 /* Build configuration list for PBXProject "Words800App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A10000025 /* Debug */,
-				A10000026 /* Release */,
+				000000000000000A10000025 /* Debug */,
+				000000000000000A10000026 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = A10000023 /* Project object */;
+	rootObject = 000000000000000A10000023 /* Project object */;
 }

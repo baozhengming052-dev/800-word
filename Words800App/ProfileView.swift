@@ -1,246 +1,158 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import UserNotifications
 
-// MARK: - Profile View
 struct ProfileView: View {
     @EnvironmentObject var dataManager: DataManager
-    @State private var showingResetAlert = false
-
+    @AppStorage("dailyGoal") private var dailyGoal = 20
+    @State private var exportDocument = BackupDocument()
+    @State private var exportPresented = false
+    @State private var importPresented = false
     var body: some View {
         NavigationView {
-            List {
-                // Statistics Section
-                Section("学习数据") {
-                    HStack {
-                        Label("总词数", systemImage: "book.fill")
-                        Spacer()
-                        Text("\(dataManager.words.count)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Label("已学习", systemImage: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Spacer()
-                        Text("\(studiedCount)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Label("已掌握", systemImage: "star.fill")
-                            .foregroundColor(.orange)
-                        Spacer()
-                        Text("\(masteredCount)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Label("错词数", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
-                        Spacer()
-                        Text("\(dataManager.errorWords.count)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Label("收藏数", systemImage: "heart.fill")
-                            .foregroundColor(.pink)
-                        Spacer()
-                        Text("\(dataManager.favoriteWords.count)")
-                            .foregroundColor(.secondary)
+            Form {
+                Section("学习计划") {
+                    Stepper("每天 \(dailyGoal) 词", value: $dailyGoal, in: 5...100, step: 5)
+                    NavigationLink(destination: ReminderSettingsView()) {
+                        Label("定时巩固 · 高频错词与生词", systemImage: "bell")
                     }
                 }
-
-                // Question Statistics
-                Section("刷题数据") {
-                    HStack {
-                        Label("总题数", systemImage: "list.bullet.clipboard")
-                        Spacer()
-                        Text("\(dataManager.questions.count)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Label("已完成", systemImage: "checkmark.square.fill")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        Text("\(completedQuestions)")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Label("正确率", systemImage: "chart.bar.fill")
-                            .foregroundColor(.green)
-                        Spacer()
-                        Text("\(accuracyRate)%")
-                            .foregroundColor(.secondary)
-                    }
+                Section("我的积累") {
+                    summary("词库总数", value: dataManager.words.count)
+                    summary("未学习", value: dataManager.newWords.count)
+                    summary("已掌握", value: dataManager.studyRecords.values.filter { $0.masteryLevel == .mastered }.count)
+                    summary("错词数", value: dataManager.errorWords.count)
+                    summary("收藏数", value: dataManager.favoriteWords.count)
+                    NavigationLink(destination: SavedWordsView(favorites: true)) { Label("我的收藏", systemImage: "star") }
+                    NavigationLink(destination: SavedWordsView(favorites: false)) { Label("学习记录", systemImage: "clock") }
+                    NavigationLink(destination: QuestionHistoryView()) { Label("答题记录", systemImage: "list.bullet.rectangle") }
                 }
-
-                // Quick Links
-                Section("快捷功能") {
-                    NavigationLink(destination: FavoriteWordsView()) {
-                        Label("我的收藏", systemImage: "star.fill")
-                            .foregroundColor(.orange)
-                    }
-
-                    NavigationLink(destination: StudyHistoryView()) {
-                        Label("学习记录", systemImage: "clock.fill")
-                            .foregroundColor(.blue)
-                    }
+                Section("本地备份") {
+                    Button {
+                        do { exportDocument = BackupDocument(data: try dataManager.exportData()); exportPresented = true }
+                        catch { dataManager.message = error.localizedDescription }
+                    } label: { Label("导出学习记录", systemImage: "square.and.arrow.up") }
+                    Button { importPresented = true } label: { Label("导入学习备份", systemImage: "square.and.arrow.down") }
+                    Text("记录保存在手机本地。导出文件包含笔记、收藏、答题和错误次数；导入会合并记录，重复导入不会重复计数。卸载前请先导出备份。")
+                        .font(.footnote).foregroundColor(.secondary)
                 }
-
-                // Settings
-                Section("设置") {
-                    Button(action: {
-                        showingResetAlert = true
-                    }) {
-                        Label("重置学习记录", systemImage: "arrow.counterclockwise")
-                            .foregroundColor(.red)
-                    }
+                Section("资料与版本") {
+                    Text("花生十三800词智能学习 · 2.0")
+                    Text("你的 PDF 包含成语与实词、增补和删除标记。所有词条保留原资料页码；自编例句与模拟题单独标注。")
+                        .font(.footnote).foregroundColor(.secondary)
+                    Text("离线使用；本地发音使用 iOS 语音。无需账号。").font(.footnote).foregroundColor(.secondary)
                 }
-
-                // About
-                Section("关于") {
-                    HStack {
-                        Text("版本")
-                        Spacer()
-                        Text("1.0.0")
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Text("应用名称")
-                        Spacer()
-                        Text("花生十三800词")
-                            .foregroundColor(.secondary)
-                    }
+            }.navigationTitle("我的")
+                .fileExporter(isPresented: $exportPresented, document: exportDocument, contentType: .json, defaultFilename: "花生800词学习备份") { result in
+                    if case .failure(let error) = result { dataManager.message = "导出失败：\(error.localizedDescription)" }
                 }
-            }
-            .navigationTitle("我的")
-            .alert("重置学习记录", isPresented: $showingResetAlert) {
-                Button("取消", role: .cancel) { }
-                Button("确认重置", role: .destructive) {
-                    resetData()
+                .fileImporter(isPresented: $importPresented, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
+                    do {
+                        guard let url = try result.get().first else { return }
+                        let access = url.startAccessingSecurityScopedResource()
+                        defer { if access { url.stopAccessingSecurityScopedResource() } }
+                        try dataManager.importData(Data(contentsOf: url))
+                        dataManager.message = "备份已合并，原有学习记录已保留。"
+                    } catch { dataManager.message = "导入失败：\(error.localizedDescription)" }
                 }
-            } message: {
-                Text("这将清除所有学习记录、错题记录和笔记，但不会删除词库和题库。此操作不可恢复。")
-            }
-        }
+        }.navigationViewStyle(.stack)
     }
-
-    private var studiedCount: Int {
-        dataManager.studyRecords.values.filter { $0.masteryLevel != .unknown }.count
-    }
-
-    private var masteredCount: Int {
-        dataManager.studyRecords.values.filter { $0.masteryLevel == .mastered }.count
-    }
-
-    private var completedQuestions: Int {
-        Set(dataManager.questionRecords.map { $0.questionId }).count
-    }
-
-    private var accuracyRate: Int {
-        guard !dataManager.questionRecords.isEmpty else { return 0 }
-        let correct = dataManager.questionRecords.filter { $0.isCorrect }.count
-        return Int(Double(correct) / Double(dataManager.questionRecords.count) * 100)
-    }
-
-    private func resetData() {
-        dataManager.studyRecords.removeAll()
-        dataManager.questionRecords.removeAll()
-        dataManager.saveData()
+    private func summary(_ title: String, value: Int) -> some View {
+        HStack { Text(title); Spacer(); Text("\(value)").monospacedDigit().foregroundColor(.secondary) }
     }
 }
-
-// MARK: - Favorite Words View
-struct FavoriteWordsView: View {
+struct ReminderSettingsView: View {
     @EnvironmentObject var dataManager: DataManager
-
+    @Environment(\.dismiss) private var dismiss
+    @State private var enabled = false
+    @State private var time = Calendar.current.date(from: DateComponents(hour: 20, minute: 0)) ?? Date()
+    @State private var saving = false
+    @State private var status = ""
     var body: some View {
-        List(dataManager.favoriteWords) { word in
-            NavigationLink(destination: WordDetailView(word: word)) {
-                WordRowView(word: word)
+        Form {
+            Section("每日巩固") {
+                Toggle("开启本地提醒", isOn: $enabled)
+                DatePicker("每天提醒时间", selection: $time, displayedComponents: .hourAndMinute).disabled(!enabled)
+                Text("优先选择错误次数多、尚未掌握的词，并搭配未学习生词。通知直接显示词语和简短释义，点击后进入词卡复习。")
+                    .font(.footnote).foregroundColor(.secondary)
             }
-        }
-        .navigationTitle("我的收藏")
-        .overlay {
-            if dataManager.favoriteWords.isEmpty {
-                VStack(spacing: 20) {
-                    Image(systemName: "star.slash")
-                        .font(.system(size: 60))
-                        .foregroundColor(.secondary)
-
-                    Text("暂无收藏")
-                        .foregroundColor(.secondary)
+            Section {
+                Button {
+                    saving = true
+                    Task {
+                        let values = Calendar.current.dateComponents([.hour, .minute], from: time)
+                        let success = await dataManager.configureReminder(enabled: enabled, hour: values.hour ?? 20, minute: values.minute ?? 0)
+                        status = dataManager.message
+                        dataManager.message = ""
+                        saving = false
+                        if !success { enabled = UserDefaults.standard.bool(forKey: "reminderEnabled") }
+                    }
+                } label: { HStack { Text(saving ? "正在保存…" : "保存提醒设置"); if saving { Spacer(); ProgressView() } } }.disabled(saving)
+                if !status.isEmpty { Text(status).font(.subheadline).foregroundColor(.secondary) }
+                Button("打开 iPhone 通知设置") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
                 }
             }
-        }
+            Section("提醒规则") {
+                Text("每天一条通知；每周轮换高频错词和生词，学习后更新内容。提醒由 iPhone 本地安排，不需要联网。")
+                Text("“忘记”安排约10分钟后复习；“模糊”安排明天；连续“记得”逐步延长至1、3、7、14、30天。复习到期显示在首页，定时通知固定在你选择的时间。")
+                Text("首次开启需允许通知。专注模式、静音或系统通知设置可能影响提醒显示。")
+            }.font(.footnote).foregroundColor(.secondary)
+        }.navigationTitle("定时巩固").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+            .onAppear {
+                enabled = UserDefaults.standard.bool(forKey: "reminderEnabled")
+                let hour = (UserDefaults.standard.object(forKey: "reminderHour") as? Int) ?? 20
+                let minute = UserDefaults.standard.integer(forKey: "reminderMinute")
+                time = Calendar.current.date(from: DateComponents(hour: hour, minute: minute)) ?? Date()
+            }
     }
 }
-
-// MARK: - Study History View
-struct StudyHistoryView: View {
+struct SavedWordsView: View {
     @EnvironmentObject var dataManager: DataManager
-
-    var recentStudiedWords: [Word] {
-        let records = dataManager.studyRecords.values
-            .filter { $0.masteryLevel != .unknown }
-            .sorted { $0.lastStudyDate > $1.lastStudyDate }
-            .prefix(50)
-
-        let wordIds = records.map { $0.wordId }
-        return dataManager.words.filter { wordIds.contains($0.id) }
-            .sorted { word1, word2 in
-                let date1 = dataManager.getStudyRecord(for: word1.id).lastStudyDate
-                let date2 = dataManager.getStudyRecord(for: word2.id).lastStudyDate
-                return date1 > date2
-            }
+    let favorites: Bool
+    private var words: [Word] {
+        favorites ? dataManager.favoriteWords : dataManager.sorted(dataManager.words.filter { dataManager.getStudyRecord(for: $0.id).lastStudyDate != .distantPast }, by: .recent)
     }
-
     var body: some View {
-        List(recentStudiedWords) { word in
-            NavigationLink(destination: WordDetailView(word: word)) {
-                HStack {
-                    WordRowView(word: word)
-
-                    Spacer()
-
-                    Text(timeAgo(from: dataManager.getStudyRecord(for: word.id).lastStudyDate))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+        List {
+            if words.isEmpty { Text(favorites ? "还没有收藏，去词库收藏想重点记忆的词。" : "完成一组学词后，学习记录会显示在这里。").foregroundColor(.secondary) }
+            ForEach(words) { word in NavigationLink(destination: WordDetailView(word: word)) { WordRowView(word: word) } }
+        }.navigationTitle(favorites ? "我的收藏" : "学习记录")
+    }
+}
+struct QuestionHistoryView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @State private var wrongOnly = false
+    private var records: [QuestionRecord] { dataManager.questionRecords.reversed().filter { !wrongOnly || !$0.isCorrect } }
+    var body: some View {
+        List {
+            Toggle("只看错题", isOn: $wrongOnly)
+            if records.isEmpty { Text("暂无符合条件的答题记录。").foregroundColor(.secondary) }
+            ForEach(records) { record in
+                if let q = dataManager.questions.first(where: { $0.id == record.questionId }) {
+                    NavigationLink(destination: QuestionExplanationView(question: q, selectedAnswer: record.selectedAnswer)) {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(q.content).lineLimit(2)
+                            HStack {
+                                Text(record.isCorrect ? "正确" : "错误").foregroundColor(record.isCorrect ? .green : .red)
+                                Text(record.answeredAt, style: .date).foregroundColor(.secondary)
+                            }.font(.caption)
+                        }
+                    }
                 }
             }
-        }
-        .navigationTitle("学习记录")
-        .overlay {
-            if recentStudiedWords.isEmpty {
-                VStack(spacing: 20) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 60))
-                        .foregroundColor(.secondary)
-
-                    Text("暂无学习记录")
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
+        }.navigationTitle("答题记录")
     }
-
-    private func timeAgo(from date: Date) -> String {
-        let interval = Date().timeIntervalSince(date)
-        let days = Int(interval / 86400)
-
-        if days == 0 {
-            return "今天"
-        } else if days == 1 {
-            return "昨天"
-        } else if days < 7 {
-            return "\(days)天前"
-        } else if days < 30 {
-            return "\(days / 7)周前"
-        } else {
-            return "\(days / 30)月前"
-        }
+}
+struct BackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data = Data()
+    init(data: Data = Data()) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        self.data = data
     }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
