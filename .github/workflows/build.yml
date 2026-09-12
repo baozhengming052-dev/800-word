@@ -2,19 +2,36 @@ name: Build IPA
 
 on:
   push:
-    branches: [main, master]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: words800-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.release.outputs.publish }}
+      artifact_label: ${{ steps.release.outputs.artifact_label }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve Tag version and release notes
+        id: release
+        run: python3 tools/release.py prepare
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -32,6 +49,9 @@ jobs:
           bash tools/verify_macos.sh
 
       - name: Build iPhone and iPad archive without distribution signing
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD: ${{ steps.release.outputs.build_number }}
         run: |
           set -euo pipefail
           mkdir -p build
@@ -43,32 +63,39 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -destination 'generic/platform=iOS' \
+            "MARKETING_VERSION=$RELEASE_VERSION" \
+            "CURRENT_PROJECT_VERSION=$RELEASE_BUILD" \
             CODE_SIGN_IDENTITY='' \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             | tee build/xcodebuild.log
 
       - name: Package and verify TrollStore IPA
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD: ${{ steps.release.outputs.build_number }}
         run: |
           set -euo pipefail
-          swift tests/BundleArchiveCheck.swift build/Words800App.xcarchive/Products/Applications/Words800App.app
+          swift tests/BundleArchiveCheck.swift build/Words800App.xcarchive/Products/Applications/Words800App.app "$RELEASE_VERSION" "$RELEASE_BUILD"
           mkdir -p build/package/Payload
           ditto build/Words800App.xcarchive/Products/Applications/Words800App.app build/package/Payload/Words800App.app
           # TrollStore signs the app during installation; no Apple account is embedded.
           cd build/package
           /usr/bin/zip -q -r '../800词学习助手.ipa' Payload
           cd ../..
-          python3 tools/validate_project.py --ipa 'build/800词学习助手.ipa'
+          python3 tools/validate_project.py --ipa 'build/800词学习助手.ipa' --expected-version "$RELEASE_VERSION" --expected-build "$RELEASE_BUILD"
           cd build
           shasum -a 256 '800词学习助手.ipa' > '800词学习助手.ipa.sha256'
 
+      - name: Stage verified release assets
+        run: python3 tools/release.py stage
+
       - name: Downloadable IPA
+        id: artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 800词学习助手-IPA
-          path: |
-            build/800词学习助手.ipa
-            build/800词学习助手.ipa.sha256
+          name: Words800App-${{ steps.release.outputs.artifact_label }}-IPA
+          path: build/release/
           if-no-files-found: error
           retention-days: 30
 
@@ -80,3 +107,50 @@ jobs:
           path: build/xcodebuild.log
           if-no-files-found: ignore
           retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download this build's verified assets
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          merge-multiple: true
+          path: release-assets
+
+      - name: Check release payload
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          test -s Words800App.ipa
+          test -s release-notes.md
+          test -s release-metadata.json
+          sha256sum --check Words800App.ipa.sha256
+
+      - name: Create Release and upload IPA
+        id: publish
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: Release ${{ needs.build.outputs.tag }}
+          body_path: release-assets/release-notes.md
+          files: |
+            release-assets/Words800App.ipa
+            release-assets/Words800App.ipa.sha256
+            release-assets/release-metadata.json
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+          make_latest: legacy
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release download page
+        env:
+          RELEASE_URL: ${{ steps.publish.outputs.url }}
+        run: printf '### Release 下载页面\n\n%s\n' "$RELEASE_URL" >> "$GITHUB_STEP_SUMMARY"

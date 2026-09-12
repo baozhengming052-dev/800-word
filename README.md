@@ -1,8 +1,20 @@
-# 花生十三800词学习助手
+# 政名政利公考800词
 
 基于你提供的《高频800词.pdf》制作的个人离线 iOS 学习 App。目标设备：iPhone 14 Pro Max 和 iPad Pro 2021，系统16.5，均已安装 TrollStore。
 
-只改本地项目；由你使用 GitHub Desktop 提交、上传，再由 GitHub Actions 编译。你不需要安装、打开或操作 Xcode；工程文件供 GitHub 云端自动构建使用。2.1 新增 iPad 横屏和附近同步代码；本地内容、工程和语法检查通过，新增原生测试与完整归档由 GitHub 验证，双机运行仍需在你的设备上验收。
+通过 GitHub Tag 发布，GitHub Actions 自动构建 iPhone / iPad 共用 IPA，并上传到对应 Release。你不需要安装、打开或操作 Xcode；工程文件供 GitHub 云端自动构建使用。源码中的发布配置不代表已经构建成功，实际发布以 GitHub 运行结果为准，安装与双机同步仍需在设备上验收。
+
+## 更新日志
+
+以下记录源码变化，是否已经发布请查看仓库的 Releases 页面。每次更新在本节顶部增加新的 `### vX.Y.Z` 记录；正式 Release 自动读取与 Tag 完全相同的版本段。
+
+### v2.2.0
+
+- 新增：推送版本 Tag 后自动构建 IPA、创建 GitHub Release，并上传安装包、SHA-256 校验文件和构建信息。
+- 新增：Release 更新说明模板；优先读取 README 对应版本记录，未填写时按实际 Git 提交生成说明。
+- 优化：App 名称改为“政名政利公考800词”，首页标题改为“政名政利公考”；保留原资料的来源标注。
+- 优化：包内版本由 Tag 确定，不依赖 Actions 运行次数；保留手动测试构建及现有 iPhone / iPad 共用打包流程。
+- 修复：“我的”中版本号写死的问题，改为读取当前安装包版本；归档与 IPA 校验增加版本、应用名称一致性检查。
 
 ## 已写入的功能
 
@@ -29,7 +41,51 @@
 
 原资料未逐词提供独立例句，已为106词补充自编例句；其余759词没有虚构“原文例句”。15处词形校订均保留原文和校订说明。详情见 [内容来源](content/SOURCES.md) 与 [导入报告](content/import-report.json)。
 
-## GitHub 打包
+## 发布方式
+
+通过 Git Tag 管理版本，例如 `v1.0.0` 表示初始版本，`v1.1.0` 表示后续新增功能的版本。当前工程已有内部版本2.1，因此这次更新建议使用 **v2.2.0**；这些历史内部版本不等于已经发布过对应 Tag。
+
+首次使用时，确认仓库允许 GitHub Actions，默认分支 `main` 和本次 Tag 指向的提交都包含新的 `.github/workflows/build.yml`、`tools/release.py` 和 `.github/release-template.md`。发布作业已声明 `contents: write`，使用 GitHub 自动提供的 `GITHUB_TOKEN`，不需要另填个人令牌或 Apple 签名证书。若组织限制了 Actions 或写权限，需先在仓库/组织设置中放行。
+
+每次发布前，在“更新日志”最上方写入对应版本的真实变化。格式如下（仅为格式示例，不会作为真实更新记录提取）：
+
+```markdown
+### v1.0.0
+
+- 新增：填写本版本新增功能。
+- 优化：填写本版本优化内容。
+- 修复：填写本版本修复问题。
+```
+
+在仓库目录打开终端，按下面五条命令发布。例如发布 `v1.1.0`：
+
+```bash
+git add .
+git commit -m "release v1.1.0"
+git tag v1.1.0
+git push origin main
+git push origin v1.1.0
+```
+
+本次建议把上面三处 `v1.1.0` 换成 `v2.2.0`，之后按实际版本递增。执行前检查待提交文件，勿混入私人备份；Tag 必须尚未存在，并指向包含全部改动的提交。无需手动改 `Info.plist` 或工程版本号。
+
+推送 Tag 后，Actions 自动完成检查、编译、IPA 打包与校验；全部成功才由发布作业生成 **Release vX.Y.Z**。打开仓库 **Releases → 对应版本 → Assets → Words800App.ipa**，即可直接下载安装包，不必再下载 Actions 的外层 ZIP。附带 `.sha256` 和 `release-metadata.json` 用于核对校验值、版本和源码提交；GitHub 自动提供的 Source code ZIP 不是安装包。
+
+发布说明来自 [.github/release-template.md](.github/release-template.md)，包含版本号、“更新内容”、“下载”和构建信息。若 README 没有该 Tag 的记录，使用上一较低且可达版本 Tag 之后的实际提交记录（最多30条）；首次发布列出最近提交。要让说明清晰易读，建议每次都填写更新日志。
+
+正式 Tag 使用 `vX.Y.Z`，X 为1–9999，Y/Z 为0–99，不带前导零或测试版后缀。Tag `v2.2.0` 会让安装包版本号和构建版本都成为 `2.2.0`；重跑不改变版本，不使用 `run_number`。新发布应使用高于已安装版本的新 Tag，**不要强制移动或覆盖已发布 Tag**。
+
+### 日常上传与手动测试
+
+- 普通 `main` 推送只上传代码，不再自动构建或发布。也可以用 GitHub Desktop 完成提交和推送，再在终端执行 `git tag vX.Y.Z`、`git push origin vX.Y.Z`。
+- 保留 **Actions → Build IPA → Run workflow**。选择分支时仅生成测试制品，不创建 Release；版本使用工程默认值（当前2.1.0 / 构建3），制品名为 `Words800App-manual-<提交短哈希>-IPA`。
+- 手动运行若明确以现有合法 Tag 为 ref，则构建并发布该 Tag；必须与实际检出的提交一致。通常失败后直接在原 Tag 的运行页面重跑即可。
+- 网络或权限故障修正后可重跑原任务；如果改了代码，重跑旧任务仍是旧代码，应重新提交并发布一个新 Tag。
+- 私有仓库的 Release 下载需要有权限的 GitHub 账号；不要为了下载安装包把含个人资料的仓库改为公开。
+
+GitHub 触发规则与权限说明见 [工作流语法](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)，Release 步骤使用 [softprops/action-gh-release](https://github.com/softprops/action-gh-release)。
+
+## GitHub 打包与安装
 
 具体步骤见 [GitHub Desktop 上传与打包指南](上传指南.md)。
 
@@ -51,17 +107,17 @@ tests/
 tools/
 ```
 
-工作流先检查资料、工程和资源复制布局，再执行学习规则、合并、同步协议、安全握手和布局规则测试，然后使用 GitHub 的 macOS / Xcode 环境构建手机/平板共用的真机 archive，通过原生 Bundle 验证后封装并校验 `800词学习助手.ipa`。构建禁用发行证书签名，供 TrollStore 安装时处理；不是 App Store / TestFlight 安装包。
+工作流先解析 Tag 与更新说明、检查资料和工程，再执行学习规则、合并、同步协议、安全握手和布局规则测试，然后使用 GitHub 的 macOS / Xcode 环境构建手机/平板共用的真机 archive。通过原生 Bundle 验证后，仍按原流程封装并校验 `build/800词学习助手.ipa`，发布时将相同字节复制为 `build/release/Words800App.ipa`。安装后桌面名称是“政名政利公考800词”，与 IPA 文件名无关。构建禁用发行证书签名，供 TrollStore 安装时处理；不是 App Store / TestFlight 安装包。
 
 源码中的 `Words800App/Resources/` 不要删除。它在工程中只是分组，构建时 JSON 和 PDF 分别复制到 App 包根目录，不在安装包内创建自定义 `Resources` 文件夹。
 
-最低部署版本15.0，Swift5，Bundle ID `com.peanut13.words800`，版本2.1（构建3）。请保留 Bundle ID 以便后续更新同一应用。两台均安装同一版 IPA，更新前导出备份，不要先卸载。
+最低部署版本15.0，Swift5，Bundle ID `com.peanut13.words800`。Bundle ID、内部产品名 `Words800App`、Scheme、资源布局与学习记录格式保持不变。两台均安装同一版 IPA，更新前导出备份，不要先卸载。
 
 附近同步操作与断线处理见 [附近同步使用说明](附近同步使用说明.md)。
 
 ## 验证
 
-Windows 可运行 `python tools/validate_project.py` 检查数据、资源和工程引用。GitHub 会额外运行 `bash tools/verify_macos.sh` 和实际 iOS 编译。检查结果与真机待测项见 [TESTING.md](TESTING.md)。
+Windows 可运行 `python tools/validate_project.py` 检查数据、资源和工程引用，以及 `python -B -m unittest discover -s tests -p 'test_*.py' -v` 运行回归测试（Python3.9及以上；发布测试另需 Git）。GitHub 会额外运行 `bash tools/verify_macos.sh` 和实际 iOS 编译。检查结果与真机待测项见 [TESTING.md](TESTING.md)。
 
 内置 JSON、PDF、图标已经生成；上传打包不需要安装 Python 依赖、重新提取 PDF 或手动改源码。仅重新生成内容时才需要 pdfplumber / Pillow：
 

@@ -91,8 +91,13 @@ def validate():
         check(reference.attrib['BlueprintIdentifier'] in identifiers, 'Shared scheme target')
         check(reference.attrib['ReferencedContainer'] == 'container:Words800App.xcodeproj', 'Scheme container')
     info = plistlib.loads((app / 'Info.plist').read_bytes())
-    check(info['CFBundleShortVersionString'] == '2.1', 'Version')
-    check(info['CFBundleVersion'] == '3', 'Build version')
+    check(info['CFBundleShortVersionString'] == '$(MARKETING_VERSION)', 'Version must come from build settings')
+    check(info['CFBundleVersion'] == '$(CURRENT_PROJECT_VERSION)', 'Build version must come from build settings')
+    check(info['CFBundleDisplayName'] == '政名政利公考800词', 'App display name')
+    for key in ['MARKETING_VERSION', 'CURRENT_PROJECT_VERSION']:
+        versions = re.findall(r'\b' + key + r'\s*=\s*([0-9.]+);', pbx)
+        check(len(versions) == 2 and len(set(versions)) == 1, f'Debug/Release {key} defaults')
+    check(pbx.count('PRODUCT_BUNDLE_IDENTIFIER = com.peanut13.words800;') == 2, 'Preserve installed app identity')
     check(info.get('NSLocalNetworkUsageDescription'), 'Nearby permission explanation')
     check('_words800-sync._tcp' in info.get('NSBonjourServices', []), 'Nearby Bonjour service')
     check('NSCameraUsageDescription' not in info, 'No unused QR camera permission')
@@ -126,14 +131,24 @@ def swift_syntax():
             raise AssertionError(f'Swift syntax: {path.name}')
     print(f'PASS: Swift grammar parsed in {len(files)} files (not type checking or iOS compilation)')
 
-def validate_ipa(path):
+def validate_bundle_info(info, expected_version=None, expected_build=None):
+    check(info['CFBundleIdentifier'] == 'com.peanut13.words800', 'Bundle ID')
+    check(info['CFBundlePackageType'] == 'APPL', 'App bundle type')
+    check(info['CFBundleDisplayName'] == '政名政利公考800词', 'Installed app display name')
+    check(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', info['CFBundleShortVersionString']), 'Resolved semantic version')
+    check(re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', info['CFBundleVersion']), 'Resolved build version')
+    if expected_version is not None:
+        check(info['CFBundleShortVersionString'] == expected_version, 'IPA version must match release Tag')
+    if expected_build is not None:
+        check(info['CFBundleVersion'] == expected_build, 'IPA build must match release metadata')
+
+def validate_ipa(path, expected_version=None, expected_build=None):
     with zipfile.ZipFile(path) as archive:
         check(archive.testzip() is None, 'Archive CRC')
         prefix = 'Payload/Words800App.app/'
         check(not any(name.startswith(prefix + 'Resources/') for name in archive.namelist()), 'Reserved Resources directory inside iOS bundle')
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
-        check(info['CFBundleIdentifier'] == 'com.peanut13.words800', 'Bundle ID')
-        check(info['CFBundlePackageType'] == 'APPL', 'App bundle type')
+        validate_bundle_info(info, expected_version, expected_build)
         minimum = tuple(int(v) for v in info['MinimumOSVersion'].split('.'))
         check(minimum <= (16, 5), 'Minimum iOS version exceeds user device')
         executable = archive.read(prefix + info['CFBundleExecutable'])
@@ -143,15 +158,17 @@ def validate_ipa(path):
             bundled = archive.read(prefix + filename)
             check(bundled == (ROOT / 'Words800App/Resources' / filename).read_bytes(), 'Complete IPA resources')
         check(prefix + 'Assets.car' in archive.namelist(), 'Compiled assets')
-    print('PASS: IPA structure, ARM64 executable, iOS floor and complete bundled resources')
+    print('PASS: IPA structure, version/name, ARM64 executable, iOS floor and complete bundled resources')
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser()
     args.add_argument('--swift-syntax', action='store_true')
     args.add_argument('--ipa', type=Path)
+    args.add_argument('--expected-version')
+    args.add_argument('--expected-build')
     options = args.parse_args()
     validate()
     if options.swift_syntax:
         swift_syntax()
     if options.ipa:
-        validate_ipa(options.ipa)
+        validate_ipa(options.ipa, options.expected_version, options.expected_build)

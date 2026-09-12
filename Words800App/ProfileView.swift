@@ -9,6 +9,9 @@ struct ProfileView: View {
     @State private var exportPresented = false
     @State private var importPresented = false
     @State private var importPreview: SyncMergePreview?
+    private var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "未知版本"
+    }
     var body: some View {
         NavigationView {
             Form {
@@ -41,7 +44,7 @@ struct ProfileView: View {
                         .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("资料与版本") {
-                    Text("花生十三800词智能学习 · 2.1")
+                    Text("政名政利公考800词 · \(appVersion)")
                     Text("你的 PDF 包含成语与实词、增补和删除标记。所有词条保留原资料页码；自编例句与模拟题单独标注。")
                         .font(.footnote).foregroundColor(.secondary)
                     Text("离线使用；本地发音使用 iOS 语音。无需账号。").font(.footnote).foregroundColor(.secondary)

@@ -64,7 +64,7 @@ struct HomeView: View {
                         Text(Date(), style: .date).font(.subheadline).foregroundColor(.secondary)
                         Text("把见过的词，\n变成会用的词。")
                             .font(.system(size: 30, weight: .bold, design: .rounded)).lineSpacing(6)
-                        Text("花生十三 · 每天一组，反复巩固").font(.subheadline).foregroundColor(.secondary)
+                        Text("政名政利公考 · 每天一组，反复巩固").font(.subheadline).foregroundColor(.secondary)
                     }.padding(.top, 8)
                     VStack(alignment: .leading, spacing: 16) {
                         HStack(alignment: .firstTextBaseline) {
@@ -116,7 +116,7 @@ struct HomeView: View {
                 }.padding(20).frame(maxWidth: 860).frame(maxWidth: .infinity)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("花生十三").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("政名政利公考").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showLearn) {
                 StudySessionView(title: "每日学词", words: Array(dataManager.newWords.prefix(max(1, dailyGoal - dataManager.todayLearnedCount))))
             }

@@ -278,7 +278,7 @@ import CryptoKit
                 if !picks.contains(where: { $0.id == word.id }) { picks.append(word) }
             }
             if picks.isEmpty && !candidates.isEmpty { picks = [candidates[day % candidates.count]] }
-            content.title = "花生十三 · 巩固时间"
+            content.title = "政名政利公考 · 巩固时间"
             content.body = picks.isEmpty ? "复习已掌握的词，再完成一组练习。" : picks.map { w in
                 let count = getStudyRecord(for: w.id).errorCount
                 return "\(w.word)（\(count > 0 ? "错\(count)次" : "生词")）：\(String(w.meanings.first?.prefix(42) ?? ""))"

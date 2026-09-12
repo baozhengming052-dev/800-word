@@ -1,5 +1,30 @@
 # 验证记录
 
+## 2026-09-12 Tag 发布与应用更名（源码计划版本 v2.2.0）
+
+### 本地已执行
+
+- 修改前工作区干净，当前分支 `main` 跟踪 `origin/main`，HEAD 为 `c5e574b`，本地无 Tag。原工作流仅有分支推送/手动构建，没有 Release，也没有实际使用 `run_number`；本次将正式发布改为 Tag 驱动。没有查询远程 Tag、修改远程地址、提交、打 Tag、推送或创建远程 Release。
+- 保留原 unsigned archive、ARM64、iPhone/iPad 共用 Scheme 和扁平资源布局，原输出仍为 `build/800词学习助手.ipa`；发布副本为 `build/release/Words800App.ipa`。Bundle Identifier 仍为 `com.peanut13.words800`，学习数据格式和存储标识未改动。
+- `python tools/validate_project.py` 通过：865词、974题、原 PDF 来源、工程引用、共享 Scheme、Info.plist、图标和资源复制布局。
+- Python3.9.13 与3.12均运行 `python -B -m unittest discover -s tests -p 'test_*.py' -v`，23项全部通过。其中原回归7项，发布/更名13项，安装包版本边界3项。
+- 发布测试覆盖轻量/附注 Tag、版本不随运行次数变化、手动分支不发布、手动 Tag 发布、非法 Tag、Tag 不存在或不指向当前提交、重复版本记录拒绝、README 代码块排除、真实 README/模板联动、提交历史回退、制品原字节复制、SHA-256 和缺包拒绝。所有测试 Tag/提交仅在测试创建的临时 Git 仓库中生成，不操作用户仓库。
+- 归档版本边界测试在新增检查前3项失败，实现后通过。首次发布 CLI 测试在未实现时失败；审查又复现 Python3.9 下8项失败，原因是 `Path.write_text(newline=...)` 不兼容，改为文件 `open` 后全量通过。
+- tree-sitter 解析22个 Swift 文件通过。版本读取的类型转换显式加括号，消除本地解析器歧义。此检查不等于 Swift 类型检查、链接或 iOS 编译。
+- 用仅安装在 `tmp/release-validation-deps` 的 PyYAML6.0.2 解析实际工作流，通过 Tag/手动触发、build 只读权限、release 写权限与成功构建依赖的断言。此项为本地静态检查，未在项目运行或 CI 中增加 Python 第三方依赖；不是 GitHub 实际执行验收。
+- `git diff --check` 通过。Git 的 LF/CRLF 提示不是检查错误，代码换行规则继续由现有 `.gitattributes` 管理。
+- 独立只读复审完成，再次运行 Python3.9 全量23项通过；文档、模板、工作流和更名接线一致，无未解决的 Critical / Important 问题。
+
+### GitHub 与真机待验收
+
+1. 将全部改动提交到 `main`，按 README 推送新的 `v2.2.0` Tag。确认普通分支推送不自动构建，Tag 推送会启动 Build IPA。
+2. GitHub 运行全部 Python 和原生 Swift 测试、Xcode16.4 archive、原生 Bundle 检查、IPA 校验。包内版本与构建版本均应为2.2.0，名称为“政名政利公考800词”，Bundle ID 不变。
+3. 构建失败时不得进入发布作业；成功后创建 `Release v2.2.0`，页面含该版本 README 更新内容，下载链接、IPA、校验文件和构建信息完整。下载后的 SHA-256 应与附件值一致。
+4. 分支手动构建只生成 Actions Artifacts、不产生 Release；非法版本 Tag 在 prepare 阶段拒绝，避免发布错版安装包。代码改动后使用新 Tag，不强制移动已发布 Tag。
+5. 两台先导出备份，再通过 TrollStore 覆盖安装同一 IPA。检查桌面名称、首页“政名政利公考”、版本页2.2.0；原笔记/收藏/错误次数仍在，并按下方清单验收 iPad 横屏和附近同步。
+
+Windows 本机未执行 iOS 原生编译、实际 Release 发布或真机覆盖安装；以上测试通过不能替代这三项验收。
+
 ## 2026-09-12 版本2.1：iPad 横屏与附近同步
 
 - 用户确认 iPad Pro 2021 / iPhone 14 Pro Max，系统16.5；明确不加二维码，使用 Apple 官方附近发现。
