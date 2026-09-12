@@ -126,7 +126,7 @@ def main():
         options=[x['word'] for x in choices]
         definition=w['meanings'][0].replace(w['word'],'该词')
         explanation='原资料释义：'+w['meanings'][0]+'\n\n'+'\n'.join(x['word']+'：'+x['meanings'][0] for x in choices if x['id']!=w['id'])
-        questions.append(dict(id=uid('definition:'+w['word']), content='根据原资料，下列释义对应哪个词？\n'+definition+'\n提示：首字为“'+w['word'][0]+'”，共'+str(len(w['word']))+'字。',
+        questions.append(dict(id=uid('definition:'+w['word']), content='根据原资料，下列释义对应哪个词？\n'+definition,
                               options=options, correctAnswer=options.index(w['word']), explanation=explanation,
                               relatedWords=[w['word']], type='释义自测', source='用户资料 · 第'+str(w['occurrences'][0]['page'])+'页', sourceURL=''))
     bundle=dict(schemaVersion=2, source='高频800词.pdf', sourceSHA256=hashlib.sha256((ROOT/'Words800App/Resources/source.pdf').read_bytes()).hexdigest(),
