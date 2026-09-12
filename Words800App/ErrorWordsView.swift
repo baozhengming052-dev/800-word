@@ -82,15 +82,15 @@ struct ErrorWordsView: View {
                 }
             }
             .navigationTitle("错词本")
-            .toolbar {
-                if !dataManager.errorWords.isEmpty {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+            .navigationBarItems(trailing:
+                Group {
+                    if !dataManager.errorWords.isEmpty {
                         NavigationLink(destination: ErrorWordsPracticeView()) {
-                            Label("强化训练", systemImage: "flame.fill")
+                            Image(systemName: "flame.fill")
                         }
                     }
                 }
-            }
+            )
         }
     }
 }
