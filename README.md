@@ -8,6 +8,12 @@
 
 以下记录源码变化，是否已经发布请查看仓库的 Releases 页面。每次更新在本节顶部增加新的 `### vX.Y.Z` 记录；正式 Release 自动读取与 Tag 完全相同的版本段。
 
+### v2.2.2
+
+- 优化：Release 安装包附件显示为“政名政利公考800词-v版本号.ipa”，版本自动跟随 Tag；校验文件同步更名。
+- 优化：下载文件使用带版本号的稳定拼音名称，发布说明中的中文下载链接与实际文件对应；附件显示名核对完成后再正式发布新 Release。
+- 保持：不改 Bundle Identifier、内部产品名、学习数据格式和现有 iPhone / iPad 打包流程。
+
 ### v2.2.1
 
 - 优化：词条详情增加独立“个人笔记”卡片，位于释义下方、重点解析与关联词辨析上方；正文直接显示，支持添加、编辑和查看历史。
@@ -48,7 +54,7 @@
 
 ## 发布方式
 
-通过 Git Tag 管理版本，例如 `v1.0.0` 表示初始版本，`v1.1.0` 表示后续新增功能的版本。本次个人笔记布局更新建议使用 **v2.2.1**；不要复用已有的 `v2.2.0` Tag。
+通过 Git Tag 管理版本，例如 `v1.0.0` 表示初始版本，`v1.1.0` 表示后续新增功能的版本。本次附件命名更新建议使用 **v2.2.2**；不要复用已有的 `v2.2.0` / `v2.2.1` Tag。
 
 首次使用时，确认仓库允许 GitHub Actions，默认分支 `main` 和本次 Tag 指向的提交都包含新的 `.github/workflows/build.yml`、`tools/release.py` 和 `.github/release-template.md`。发布作业已声明 `contents: write`，使用 GitHub 自动提供的 `GITHUB_TOKEN`，不需要另填个人令牌或 Apple 签名证书。若组织限制了 Actions 或写权限，需先在仓库/组织设置中放行。
 
@@ -72,9 +78,11 @@ git push origin main
 git push origin v1.1.0
 ```
 
-本次建议把上面三处 `v1.1.0` 换成 `v2.2.1`，之后按实际版本递增。执行前检查待提交文件，勿混入私人备份；Tag 必须尚未存在，并指向包含全部改动的提交。无需手动改 `Info.plist` 或工程版本号。
+本次建议把上面三处 `v1.1.0` 换成 `v2.2.2`，之后按实际版本递增。执行前检查待提交文件，勿混入私人备份；Tag 必须尚未存在，并指向包含全部改动的提交。无需手动改 `Info.plist` 或工程版本号。
 
-推送 Tag 后，Actions 自动完成检查、编译、IPA 打包与校验；全部成功才由发布作业生成 **Release vX.Y.Z**。打开仓库 **Releases → 对应版本 → Assets → Words800App.ipa**，即可直接下载安装包，不必再下载 Actions 的外层 ZIP。附带 `.sha256` 和 `release-metadata.json` 用于核对校验值、版本和源码提交；GitHub 自动提供的 Source code ZIP 不是安装包。
+推送 Tag 后，Actions 自动完成检查、编译、IPA 打包与校验；发布作业先上传到草稿并核对附件显示名，全部成功才正式发布 **Release vX.Y.Z**。打开仓库 **Releases → 对应版本 → Assets → 政名政利公考800词-vX.Y.Z.ipa**，即可直接下载安装包，不必再下载 Actions 的外层 ZIP。附带同名 `.sha256` 和 `release-metadata.json` 用于核对校验值、版本和源码提交；GitHub 自动提供的 Source code ZIP 不是安装包。
+
+例如 `v2.2.2` 页面显示 `政名政利公考800词-v2.2.2.ipa`，实际下载文件为 `ZhengMingZhengLiGongKao800-v2.2.2.ipa`。中文显示名使用 GitHub 的附件 label；实际文件用拼音避免中文文件名被平台改写，校验文件内也使用真实下载文件名，不影响 TrollStore 安装。此规则对包含本次改动的新版本生效，不自动改名已经发布的附件。
 
 发布说明来自 [.github/release-template.md](.github/release-template.md)，包含版本号、“更新内容”、“下载”和构建信息。若 README 没有该 Tag 的记录，使用上一较低且可达版本 Tag 之后的实际提交记录（最多30条）；首次发布列出最近提交。要让说明清晰易读，建议每次都填写更新日志。
 
@@ -83,12 +91,15 @@ git push origin v1.1.0
 ### 日常上传与手动测试
 
 - 普通 `main` 推送只上传代码，不再自动构建或发布。也可以全程使用 GitHub Desktop：提交后在 History 中右键新提交 → Create Tag → 填版本号 → Push origin，详见上传指南。
-- 保留 **Actions → Build IPA → Run workflow**。选择分支时仅生成测试制品，不创建 Release；版本使用工程默认值（当前2.1.0 / 构建3），制品名为 `Words800App-manual-<提交短哈希>-IPA`。
-- 手动运行若明确以现有合法 Tag 为 ref，则构建并发布该 Tag；必须与实际检出的提交一致。通常失败后直接在原 Tag 的运行页面重跑即可。
-- 网络或权限故障修正后可重跑原任务；如果改了代码，重跑旧任务仍是旧代码，应重新提交并发布一个新 Tag。
+- 保留 **Actions → Build IPA → Run workflow**。选择分支时仅生成测试制品，不创建 Release；版本使用工程默认值（当前2.1.0 / 构建3），外层制品名为 `Words800App-manual-<提交短哈希>-IPA`，里面的 IPA 为 `ZhengMingZhengLiGongKao800-v2.1.0-manual-<提交短哈希>.ipa`。
+- 手动运行若明确以现有合法 Tag 为 ref，则构建并发布该 Tag；必须与实际检出的提交一致。构建失败或尚未正式发布的草稿，修正网络/权限问题后可在原 Tag 的运行页面重跑。
+- 已经成功公开发布的版本，请用更高的新 Tag 更新。重跑旧 Tag 可能覆盖普通 Release 的同名附件；不可变 Release 会拒绝覆盖，不能保证重跑成功。新流程不会把已公开 Release 重新变回草稿。
+- 如果改了代码，重跑旧任务仍是旧代码，应重新提交并发布一个新 Tag。
 - 私有仓库的 Release 下载需要有权限的 GitHub 账号；不要为了下载安装包把含个人资料的仓库改为公开。
 
 GitHub 触发规则与权限说明见 [工作流语法](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)，Release 步骤使用 [softprops/action-gh-release](https://github.com/softprops/action-gh-release)。
+
+附件显示名与实际文件名的区别见 [GitHub Release assets API](https://docs.github.com/en/rest/releases/assets#update-a-release-asset)；[GitHub 官方建议](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)先完成草稿附件再发布，避免开启不可变 Release 后无法修改附件。如果首次发布在设置显示名时失败，草稿会保留；解决网络/权限问题后可重跑，不要提前手动发布未完成的草稿。
 
 ## GitHub 打包与安装
 
@@ -112,7 +123,7 @@ tests/
 tools/
 ```
 
-工作流先解析 Tag 与更新说明、检查资料和工程，再执行学习规则、合并、同步协议、安全握手和布局规则测试，然后使用 GitHub 的 macOS / Xcode 环境构建手机/平板共用的真机 archive。通过原生 Bundle 验证后，仍按原流程封装并校验 `build/800词学习助手.ipa`，发布时将相同字节复制为 `build/release/Words800App.ipa`。安装后桌面名称是“政名政利公考800词”，与 IPA 文件名无关。构建禁用发行证书签名，供 TrollStore 安装时处理；不是 App Store / TestFlight 安装包。
+工作流先解析 Tag 与更新说明、检查资料和工程，再执行学习规则、合并、同步协议、安全握手和布局规则测试，然后使用 GitHub 的 macOS / Xcode 环境构建手机/平板共用的真机 archive。通过原生 Bundle 验证后，仍按原流程封装并校验 `build/800词学习助手.ipa`，发布时将相同字节复制为 `build/release/ZhengMingZhengLiGongKao800-vX.Y.Z.ipa`。安装后桌面名称是“政名政利公考800词”，与 IPA 文件名无关。构建禁用发行证书签名，供 TrollStore 安装时处理；不是 App Store / TestFlight 安装包。
 
 源码中的 `Words800App/Resources/` 不要删除。它在工程中只是分组，构建时 JSON 和 PDF 分别复制到 App 包根目录，不在安装包内创建自定义 `Resources` 文件夹。
 

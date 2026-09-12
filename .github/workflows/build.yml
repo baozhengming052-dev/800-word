@@ -22,6 +22,8 @@ jobs:
       publish: ${{ steps.release.outputs.publish }}
       artifact_label: ${{ steps.release.outputs.artifact_label }}
       artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      ipa_name: ${{ steps.release.outputs.ipa_name }}
+      ipa_label: ${{ steps.release.outputs.ipa_label }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -126,29 +128,69 @@ jobs:
 
       - name: Check release payload
         working-directory: release-assets
+        env:
+          IPA_NAME: ${{ needs.build.outputs.ipa_name }}
         run: |
           set -euo pipefail
-          test -s Words800App.ipa
+          test -s "$IPA_NAME"
           test -s release-notes.md
           test -s release-metadata.json
-          sha256sum --check Words800App.ipa.sha256
+          sha256sum --check "$IPA_NAME.sha256"
 
-      - name: Create Release and upload IPA
-        id: publish
+      - name: Prepare Release draft and upload IPA
+        id: draft
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.build.outputs.tag }}
           name: Release ${{ needs.build.outputs.tag }}
           body_path: release-assets/release-notes.md
           files: |
-            release-assets/Words800App.ipa
-            release-assets/Words800App.ipa.sha256
+            release-assets/${{ needs.build.outputs.ipa_name }}
+            release-assets/${{ needs.build.outputs.ipa_name }}.sha256
             release-assets/release-metadata.json
           fail_on_unmatched_files: true
-          draft: false
+          # Apply display labels before publishing, including on immutable-release repositories.
+          draft: true
           prerelease: false
           make_latest: legacy
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Chinese asset labels and publish Release
+        id: publish
+        uses: actions/github-script@v8
+        env:
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+          UPLOADED_ASSETS: ${{ steps.draft.outputs.assets }}
+          IPA_NAME: ${{ needs.build.outputs.ipa_name }}
+          IPA_LABEL: ${{ needs.build.outputs.ipa_label }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const assets = JSON.parse(process.env.UPLOADED_ASSETS);
+            const releaseId = Number(process.env.RELEASE_ID);
+            if (!Number.isSafeInteger(releaseId) || releaseId <= 0) {
+              throw new Error('Invalid Release ID; refusing to publish.');
+            }
+            const expected = ['', '.sha256'].map(suffix => ({
+              name: process.env.IPA_NAME + suffix,
+              label: process.env.IPA_LABEL + suffix
+            }));
+            for (const {name, label} of expected) {
+              const matches = assets.filter(asset => asset.name === name && asset.state === 'uploaded');
+              if (matches.length !== 1) {
+                throw new Error(`Expected one uploaded asset: ${name}`);
+              }
+              const {data} = await github.rest.repos.updateReleaseAsset({
+                ...context.repo, asset_id: matches[0].id, label
+              });
+              if (data.label !== label || data.name !== name) {
+                throw new Error(`Asset name/label verification failed: ${name}`);
+              }
+            }
+            const {data} = await github.rest.repos.updateRelease({
+              ...context.repo, release_id: releaseId, draft: false, make_latest: 'legacy'
+            });
+            core.setOutput('url', data.html_url);
 
       - name: Release download page
         env:

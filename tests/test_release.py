@@ -70,7 +70,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(metadata["commit"], self.git("rev-parse", "HEAD"))
         self.assertIn("附近同步", self.notes())
         self.assertNotIn("新增：词库", self.notes())
-        self.assertIn("releases/download/v1.1.0/Words800App.ipa", self.notes())
+        self.assertIn("releases/download/v1.1.0/ZhengMingZhengLiGongKao800-v1.1.0.ipa", self.notes())
         self.assertEqual(metadata, self.prepare(run_number="99999"))
 
     def test_manual_branch_is_preview_only(self):
@@ -84,6 +84,31 @@ class ReleaseTests(unittest.TestCase):
     def test_manual_existing_tag_can_publish(self):
         self.git("tag", "v1.1.0")
         self.assertTrue(self.prepare(event="workflow_dispatch")["publish"])
+
+    def test_release_asset_names_labels_and_links_follow_each_tag(self):
+        for tag in ("v1.1.0", "v2.2.2"):
+            with self.subTest(tag=tag):
+                self.git("tag", tag)
+                metadata = self.prepare(ref="refs/tags/" + tag)
+                filename = f"ZhengMingZhengLiGongKao800-{tag}.ipa"
+                label = f"政名政利公考800词-{tag}.ipa"
+                self.assertEqual(metadata.get("ipa_name"), filename)
+                self.assertEqual(metadata.get("ipa_label"), label)
+                self.assertIn(f"[{label}](https://github.com/owner/words/releases/download/{tag}/{filename})", self.notes())
+                self.assertIn(f"[{label}.sha256](https://github.com/owner/words/releases/download/{tag}/{filename}.sha256)", self.notes())
+                outputs = (self.root / "outputs.txt").read_text(encoding="utf-8").splitlines()
+                self.assertIn(f"ipa_name={filename}", outputs)
+                self.assertIn(f"ipa_label={label}", outputs)
+
+    def test_manual_asset_has_default_version_and_preview_commit(self):
+        metadata = self.prepare(ref="refs/heads/main", event="workflow_dispatch")
+        suffix = "v2.1.0-manual-" + self.git("rev-parse", "HEAD")[:12]
+        self.assertEqual(metadata.get("ipa_name"), f"ZhengMingZhengLiGongKao800-{suffix}.ipa")
+        self.assertEqual(metadata.get("ipa_label"), f"政名政利公考800词-{suffix}.ipa")
+        (self.root / "build/800词学习助手.ipa").write_bytes(b"preview test payload")
+        result = self.run_cli(command="stage")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "build/release" / metadata["ipa_name"]).is_file())
 
     def test_branch_push_and_invalid_tags_fail_closed(self):
         for ref, event in [("refs/heads/main", "push"), ("refs/tags/v1.1", "push"),
@@ -135,7 +160,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn("政名政利公考800词", self.notes())
         self.assertIn("### 更新内容", self.notes())
         self.assertIn("### 下载", self.notes())
-        self.assertIn("releases/download/v2.2.0/Words800App.ipa", self.notes())
+        self.assertIn("releases/download/v2.2.0/ZhengMingZhengLiGongKao800-v2.2.0.ipa", self.notes())
         self.assertNotIn("填写本版本", self.notes())
         self.assertNotIn("git push origin", self.notes())
         self.assertNotIn("## 已写入的功能", self.notes())
@@ -157,18 +182,22 @@ class ReleaseTests(unittest.TestCase):
         source.write_bytes(payload)
         result = self.run_cli(command="stage")
         self.assertEqual(result.returncode, 0, result.stderr)
-        staged = self.root / "build/release/Words800App.ipa"
+        staged = self.root / "build/release/ZhengMingZhengLiGongKao800-v1.1.0.ipa"
+        self.assertTrue(staged.is_file(), "staging must use the versioned download filename")
         self.assertEqual(source.read_bytes(), staged.read_bytes())
-        checksum = (staged.parent / "Words800App.ipa.sha256").read_text(encoding="utf-8")
-        self.assertEqual(checksum, hashlib.sha256(payload).hexdigest() + "  Words800App.ipa\n")
-        self.assertTrue((staged.parent / "release-metadata.json").is_file())
+        checksum = (staged.parent / "ZhengMingZhengLiGongKao800-v1.1.0.ipa.sha256").read_text(encoding="utf-8")
+        self.assertEqual(checksum, hashlib.sha256(payload).hexdigest() + "  ZhengMingZhengLiGongKao800-v1.1.0.ipa\n")
+        metadata = json.loads((staged.parent / "release-metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["ipa_name"], staged.name)
+        self.assertEqual(metadata["ipa_sha256"], hashlib.sha256(payload).hexdigest())
+        self.assertFalse((staged.parent / "Words800App.ipa").exists())
 
     def test_stage_rejects_missing_ipa(self):
         self.git("tag", "v1.1.0")
         self.prepare()
         result = self.run_cli(command="stage")
         self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((self.root / "build/release/Words800App.ipa").exists())
+        self.assertEqual(list((self.root / "build/release").glob("*.ipa")), [])
 
 
 class BrandingTests(unittest.TestCase):

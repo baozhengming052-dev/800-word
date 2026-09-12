@@ -129,6 +129,11 @@ def prepare(root, environment):
         raise ValueError("Tag 不指向当前构建的提交，已拒绝发布。")
     metadata.update(commit=commit, repository=repository, server_url=server,
                     artifact_label=tag or f"manual-{commit[:12]}")
+    # ASCII download names remain stable when GitHub normalizes non-ASCII names.
+    # The Chinese label is applied to the Release asset before publication.
+    suffix = tag or f"v{metadata['version']}-manual-{commit[:12]}"
+    metadata.update(ipa_name=f"ZhengMingZhengLiGongKao800-{suffix}.ipa",
+                    ipa_label=f"政名政利公考800词-{suffix}.ipa")
     base = f"{server}/{repository}"
     if tag:
         changes = extract_changelog((root / "README.md").read_text(encoding="utf-8"), tag)
@@ -138,8 +143,9 @@ def prepare(root, environment):
         template = Template((root / ".github/release-template.md").read_text(encoding="utf-8"))
         notes = template.substitute(tag=tag, version=metadata["version"], changes=changes, commit=commit,
                                     commit_url=f"{base}/commit/{commit}",
-                                    ipa_url=f"{base}/releases/download/{tag}/Words800App.ipa",
-                                    checksum_url=f"{base}/releases/download/{tag}/Words800App.ipa.sha256")
+                                    ipa_name=metadata["ipa_name"], ipa_label=metadata["ipa_label"],
+                                    ipa_url=f"{base}/releases/download/{tag}/{metadata['ipa_name']}",
+                                    checksum_url=f"{base}/releases/download/{tag}/{metadata['ipa_name']}.sha256")
     else:
         metadata["notes_source"] = "preview"
         notes = f"## 手动测试构建\n\n版本：{metadata['version']}；提交：`{commit}`。\n\n此构建不会创建 Release，请在 Actions Artifacts 下载。\n"
@@ -150,7 +156,7 @@ def prepare(root, environment):
     (root / "build/release-metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if environment.get("GITHUB_OUTPUT"):
         with open(environment["GITHUB_OUTPUT"], "a", encoding="utf-8", newline="\n") as stream:
-            for key in ("tag", "version", "build_number", "publish", "artifact_label", "commit"):
+            for key in ("tag", "version", "build_number", "publish", "artifact_label", "commit", "ipa_name", "ipa_label"):
                 value = metadata[key]
                 if isinstance(value, bool):
                     value = str(value).lower()
@@ -167,11 +173,11 @@ def stage(root):
     directory = root / "build/release"
     if not (directory / "release-notes.md").is_file():
         raise ValueError("Release 更新说明缺失。")
-    target = directory / "Words800App.ipa"
+    target = directory / metadata["ipa_name"]
     shutil.copyfile(source, target)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    with (directory / "Words800App.ipa.sha256").open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(f"{digest}  Words800App.ipa\n")
+    with (directory / (target.name + ".sha256")).open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(f"{digest}  {target.name}\n")
     metadata["ipa_sha256"] = digest
     (directory / "release-metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -186,7 +192,7 @@ def main():
             print(json.dumps(prepare(arguments.root.resolve(), os.environ), ensure_ascii=False))
         else:
             stage(arguments.root.resolve())
-            print("PASS: Words800App.ipa / SHA256 / release metadata staged")
+            print("PASS: versioned IPA / SHA256 / release metadata staged")
     except (ValueError, OSError, KeyError) as error:
         print(f"Release preparation failed: {error}", file=sys.stderr)
         return 1

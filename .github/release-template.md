@@ -6,8 +6,10 @@ $changes
 
 ### 下载
 
-- [Words800App.ipa]($ipa_url)
-- [SHA-256 校验文件]($checksum_url)
+- [$ipa_label]($ipa_url)
+- [$ipa_label.sha256]($checksum_url)
+
+附件显示中文 App 名称；为兼容 GitHub 文件名处理，实际下载文件名为 `$ipa_name`，不影响 TrollStore 安装。
 
 App 名称：政名政利公考800词。iPhone / iPad 共用一个 IPA，通过 TrollStore 安装；不是 App Store / TestFlight 安装包。
 
