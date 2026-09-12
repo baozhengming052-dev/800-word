@@ -8,11 +8,12 @@ struct ErrorWordsView: View {
     @State private var cards = false
     @State private var practice = false
     @State private var selectedQuestions: [Question] = []
+    @State private var selectedWordID: UUID?
     private var words: [Word] {
         dataManager.sorted(dataManager.errorWords.filter { !hideMastered || dataManager.getStudyRecord(for: $0.id).masteryLevel != .mastered }, by: sort)
     }
     var body: some View {
-        NavigationView {
+        AdaptiveWordBrowser(title: "错词本", words: words, selection: $selectedWordID) { wide, compactDetail in
             List {
                 Section {
                     HStack {
@@ -34,10 +35,10 @@ struct ErrorWordsView: View {
                 Section("\(words.count) 个错词 · 点右侧编辑按钮可修改") {
                     ForEach(words) { word in
                         HStack {
-                            NavigationLink(destination: WordDetailView(word: word)) { WordRowView(word: word) }
+                            AdaptiveWordLink(word: word, isWide: wide, selection: $selectedWordID, compactDetailPresented: compactDetail)
                             Button { editWord = word } label: { Image(systemName: "square.and.pencil") }
                                 .buttonStyle(.borderless).accessibilityLabel("编辑\(word.word)错误次数")
-                        }
+                        }.listRowBackground(wide && selectedWordID == word.id ? AppStyle.accent.opacity(0.10) : Color(.secondarySystemGroupedBackground))
                     }
                     if words.isEmpty {
                         Text("这里会收集答错或选择“忘记”的词。你也可以在词条详情中手动录入错误次数。")
@@ -45,10 +46,9 @@ struct ErrorWordsView: View {
                     }
                 }
             }
-            .navigationTitle("错词本")
             .sheet(item: $editWord) { ErrorCountEditor(word: $0) }
             .sheet(isPresented: $cards) { StudySessionView(title: "巩固薄弱词", words: Array(words.prefix(20))) }
             .fullScreenCover(isPresented: $practice) { PracticeSessionView(questions: selectedQuestions) }
-        }.navigationViewStyle(.stack)
+        }
     }
 }

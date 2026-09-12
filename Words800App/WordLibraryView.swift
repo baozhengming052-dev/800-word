@@ -9,6 +9,7 @@ struct WordLibraryView: View {
     @State private var status = "全部状态"
     @State private var sort: WordSort = .original
     @State private var showArchived = false
+    @State private var selectedWordID: UUID?
     private var filtered: [Word] {
         dataManager.sorted(dataManager.searchWords(keyword: search).filter {
             dataManager.belongs($0, to: category) && (showArchived || !$0.sourceDeleted)
@@ -16,7 +17,7 @@ struct WordLibraryView: View {
         }, by: sort)
     }
     var body: some View {
-        NavigationView {
+        AdaptiveWordBrowser(title: "词库", words: filtered, selection: $selectedWordID) { wide, compactDetail in
             VStack(spacing: 0) {
                 HStack {
                     Menu {
@@ -43,7 +44,8 @@ struct WordLibraryView: View {
                     if !search.isEmpty { Button("清空") { search = "" } }
                 }.font(.caption).foregroundColor(.secondary).padding(.horizontal).padding(.bottom, 8)
                 List(filtered) { word in
-                    NavigationLink(destination: WordDetailView(word: word)) { WordRowView(word: word) }
+                    AdaptiveWordLink(word: word, isWide: wide, selection: $selectedWordID, compactDetailPresented: compactDetail)
+                        .listRowBackground(wide && selectedWordID == word.id ? AppStyle.accent.opacity(0.10) : Color(.systemBackground))
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button { dataManager.toggleFavorite(for: word.id) } label: { Label("收藏", systemImage: "star") }.tint(.orange)
                         }
@@ -53,9 +55,8 @@ struct WordLibraryView: View {
                         .foregroundColor(.secondary).padding()
                 }
             }
-            .navigationTitle("词库")
             .searchable(text: $search, prompt: "词语、释义、含义、关键词")
-        }.navigationViewStyle(.stack)
+        }
     }
 }
 struct WordRowView: View {
@@ -84,11 +85,10 @@ struct WordRowView: View {
 
 struct WordDetailView: View {
     @EnvironmentObject var dataManager: DataManager
+    @Environment(\.presentWordEditor) private var presentWordEditor
     @StateObject private var speaker = WordSpeaker()
     let word: Word
-    @State private var showNotes = false
-    @State private var showErrors = false
-    @State private var showSource = false
+    @State private var localEditorRequest: WordEditorRequest?
     private var record: StudyRecord { dataManager.getStudyRecord(for: word.id) }
     var body: some View {
         List {
@@ -108,14 +108,14 @@ struct WordDetailView: View {
                 Picker("掌握程度", selection: Binding(get: { record.masteryLevel }, set: { dataManager.updateMasteryLevel(for: word.id, level: $0) })) {
                     ForEach(MasteryLevel.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
-                Button { showErrors = true } label: {
+                Button { openEditor(.errors) } label: {
                     HStack { Text("错误次数"); Spacer(); Text("\(record.errorCount) 次").monospacedDigit(); Image(systemName: "pencil") }
                 }
                 Toggle("收藏这个词", isOn: Binding(get: { record.isFavorite }, set: { _ in dataManager.toggleFavorite(for: word.id) }))
                 if record.nextReviewDate != .distantFuture {
                     HStack { Text("下次复习"); Spacer(); Text(record.nextReviewDate, style: .date).foregroundColor(.secondary) }
                 }
-                Button { showNotes = true } label: { Label(record.personalNotes.isEmpty ? "添加个人笔记" : "编辑个人笔记", systemImage: "note.text") }
+                Button { openEditor(.notes) } label: { Label(record.personalNotes.isEmpty ? "添加个人笔记" : "编辑个人笔记", systemImage: "note.text") }
                 if !record.personalNotes.isEmpty { Text(record.personalNotes).textSelection(.enabled) }
                 if record.noteHistory.count > 1 {
                     DisclosureGroup("笔记历史（\(record.noteHistory.count)）") {
@@ -150,14 +150,18 @@ struct WordDetailView: View {
                 ForEach(Array(word.occurrences.enumerated()), id: \.offset) { _, occurrence in
                     if !occurrence.correctionNote.isEmpty { Text(occurrence.correctionNote).font(.footnote).foregroundColor(.orange) }
                 }
-                Button("查看 PDF 原页") { showSource = true }
+                Button("查看 PDF 原页") { openEditor(.source) }
             }
         }
         .navigationTitle(word.word).navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showErrors) { ErrorCountEditor(word: word) }
-        .sheet(isPresented: $showNotes) { NotesEditorView(word: word) }
-        .sheet(isPresented: $showSource) { SourcePDFView(page: word.occurrences.first?.page ?? 1) }
+        .sheet(item: $localEditorRequest) { WordEditorSheet(request: $0) }
         .onDisappear { speaker.stop() }
+    }
+
+    private func openEditor(_ kind: WordEditorKind) {
+        let request = WordEditorRequest(word: word, kind: kind)
+        if let presentWordEditor = presentWordEditor { presentWordEditor(request) }
+        else { localEditorRequest = request }
     }
 }
 struct WordMeaningSections: View {
@@ -197,6 +201,7 @@ struct ErrorCountEditor: View {
     @Environment(\.dismiss) private var dismiss
     let word: Word
     @State private var input = ""
+    @State private var loadedDraft = false
     private var validCount: Int? {
         guard let count = Int(input), (0...99999).contains(count) else { return nil }; return count
     }
@@ -221,8 +226,12 @@ struct ErrorCountEditor: View {
                     Button("保存") { if let value = validCount { dataManager.setErrorCount(for: word.id, count: value); dismiss() } }.disabled(validCount == nil)
                 }
             }
-            .onAppear { input = String(dataManager.getStudyRecord(for: word.id).errorCount) }
-        }
+            .onAppear {
+                guard !loadedDraft else { return }
+                input = String(dataManager.getStudyRecord(for: word.id).errorCount)
+                loadedDraft = true
+            }
+        }.navigationViewStyle(.stack)
     }
 }
 struct NotesEditorView: View {
@@ -230,6 +239,7 @@ struct NotesEditorView: View {
     @Environment(\.dismiss) private var dismiss
     let word: Word
     @State private var notes = ""
+    @State private var loadedDraft = false
     var body: some View {
         NavigationView {
             TextEditor(text: $notes).padding().navigationTitle("\(word.word) · 笔记")
@@ -237,8 +247,12 @@ struct NotesEditorView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("保存") { dataManager.updateNotes(for: word.id, notes: notes); dismiss() }.disabled(notes.utf8.count > 100000) }
-                }.onAppear { notes = dataManager.getStudyRecord(for: word.id).personalNotes }
-        }
+                }.onAppear {
+                    guard !loadedDraft else { return }
+                    notes = dataManager.getStudyRecord(for: word.id).personalNotes
+                    loadedDraft = true
+                }
+        }.navigationViewStyle(.stack)
     }
 }
 
@@ -320,6 +334,7 @@ struct StudySessionView: View {
             .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("稍后继续") { saveProgress(); dismiss() } } }
         }
+        .navigationViewStyle(.stack)
         .tint(AppStyle.accent)
         .onAppear {
             guard !loaded else { return }; loaded = true
@@ -354,7 +369,7 @@ struct SourcePDFView: View {
         NavigationView {
             PDFPageReader(page: page).navigationTitle("原资料 · 第 \(page) 页").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("关闭") { dismiss() } } }
-        }
+        }.navigationViewStyle(.stack)
     }
 }
 struct PDFPageReader: UIViewRepresentable {

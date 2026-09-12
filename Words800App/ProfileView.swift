@@ -8,6 +8,7 @@ struct ProfileView: View {
     @State private var exportDocument = BackupDocument()
     @State private var exportPresented = false
     @State private var importPresented = false
+    @State private var importPreview: SyncMergePreview?
     var body: some View {
         NavigationView {
             Form {
@@ -27,17 +28,20 @@ struct ProfileView: View {
                     NavigationLink(destination: SavedWordsView(favorites: false)) { Label("学习记录", systemImage: "clock") }
                     NavigationLink(destination: QuestionHistoryView()) { Label("答题记录", systemImage: "list.bullet.rectangle") }
                 }
-                Section("本地备份") {
+                Section("设备与备份") {
+                    NavigationLink(destination: NearbySyncView(dataManager: dataManager)) {
+                        Label("附近设备同步 · iPhone / iPad", systemImage: "ipad.and.iphone")
+                    }
                     Button {
                         do { exportDocument = BackupDocument(data: try dataManager.exportData()); exportPresented = true }
                         catch { dataManager.message = error.localizedDescription }
                     } label: { Label("导出学习记录", systemImage: "square.and.arrow.up") }
                     Button { importPresented = true } label: { Label("导入学习备份", systemImage: "square.and.arrow.down") }
-                    Text("记录保存在手机本地。导出文件包含笔记、收藏、答题和错误次数；导入会合并记录，重复导入不会重复计数。卸载前请先导出备份。")
+                    Text("记录保存在本机。导出文件包含笔记、收藏、答题和错误次数；导入先预览，再合并。重复导入不会重复计数。卸载前请先导出备份。")
                         .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("资料与版本") {
-                    Text("花生十三800词智能学习 · 2.0")
+                    Text("花生十三800词智能学习 · 2.1")
                     Text("你的 PDF 包含成语与实词、增补和删除标记。所有词条保留原资料页码；自编例句与模拟题单独标注。")
                         .font(.footnote).foregroundColor(.secondary)
                     Text("离线使用；本地发音使用 iOS 语音。无需账号。").font(.footnote).foregroundColor(.secondary)
@@ -51,10 +55,12 @@ struct ProfileView: View {
                         guard let url = try result.get().first else { return }
                         let access = url.startAccessingSecurityScopedResource()
                         defer { if access { url.stopAccessingSecurityScopedResource() } }
-                        try dataManager.importData(Data(contentsOf: url))
-                        dataManager.message = "备份已合并，原有学习记录已保留。"
+                        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                        guard size <= 20_000_000 else { throw DataManager.AppError.text("备份文件超过 20 MB。") }
+                        importPreview = try dataManager.previewImport(Data(contentsOf: url))
                     } catch { dataManager.message = "导入失败：\(error.localizedDescription)" }
                 }
+                .sheet(item: $importPreview) { preview in BackupMergeView(preview: preview) }
         }.navigationViewStyle(.stack)
     }
     private func summary(_ title: String, value: Int) -> some View {
@@ -89,13 +95,13 @@ struct ReminderSettingsView: View {
                     }
                 } label: { HStack { Text(saving ? "正在保存…" : "保存提醒设置"); if saving { Spacer(); ProgressView() } } }.disabled(saving)
                 if !status.isEmpty { Text(status).font(.subheadline).foregroundColor(.secondary) }
-                Button("打开 iPhone 通知设置") {
+                Button("打开本机通知设置") {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                     UIApplication.shared.open(url)
                 }
             }
             Section("提醒规则") {
-                Text("每天一条通知；每周轮换高频错词和生词，学习后更新内容。提醒由 iPhone 本地安排，不需要联网。")
+                Text("每天一条通知；每周轮换高频错词和生词，学习后更新内容。提醒由本机安排，不需要联网；两台设备的提醒开关各自设置。")
                 Text("“忘记”安排约10分钟后复习；“模糊”安排明天；连续“记得”逐步延长至1、3、7、14、30天。复习到期显示在首页，定时通知固定在你选择的时间。")
                 Text("首次开启需允许通知。专注模式、静音或系统通知设置可能影响提醒显示。")
             }.font(.footnote).foregroundColor(.secondary)

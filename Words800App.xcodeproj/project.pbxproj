@@ -7,6 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		000000000000000A10000040 /* AdaptiveLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000041 /* AdaptiveLayout.swift */; };
+		000000000000000A10000042 /* SyncMergeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000043 /* SyncMergeEngine.swift */; };
+		000000000000000A10000044 /* SyncExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000045 /* SyncExchange.swift */; };
+		000000000000000A10000046 /* NearbySecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000047 /* NearbySecurity.swift */; };
+		000000000000000A10000048 /* NearbyTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000049 /* NearbyTransport.swift */; };
+		000000000000000A1000004A /* NearbySyncModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A1000004B /* NearbySyncModel.swift */; };
+		000000000000000A1000004C /* NearbySyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A1000004D /* NearbySyncView.swift */; };
 		000000000000000A10000032 /* LearningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000033 /* LearningEngine.swift */; };
 		000000000000000A10000030 /* library.json in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000034 /* library.json */; };
 		000000000000000A10000036 /* source.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000035 /* source.pdf */; };
@@ -22,6 +29,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		000000000000000A10000041 /* AdaptiveLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveLayout.swift; sourceTree = "<group>"; };
+		000000000000000A10000043 /* SyncMergeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMergeEngine.swift; sourceTree = "<group>"; };
+		000000000000000A10000045 /* SyncExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncExchange.swift; sourceTree = "<group>"; };
+		000000000000000A10000047 /* NearbySecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbySecurity.swift; sourceTree = "<group>"; };
+		000000000000000A10000049 /* NearbyTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyTransport.swift; sourceTree = "<group>"; };
+		000000000000000A1000004B /* NearbySyncModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbySyncModel.swift; sourceTree = "<group>"; };
+		000000000000000A1000004D /* NearbySyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbySyncView.swift; sourceTree = "<group>"; };
 		000000000000000A10000033 /* LearningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningEngine.swift; sourceTree = "<group>"; };
 		000000000000000A10000034 /* library.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = library.json; sourceTree = "<group>"; };
 		000000000000000A10000035 /* source.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = source.pdf; sourceTree = "<group>"; };
@@ -67,6 +81,13 @@
 				000000000000000A10000004 /* Models.swift */,
 				000000000000000A10000005 /* DataManager.swift */,
 				000000000000000A10000033 /* LearningEngine.swift */,
+				000000000000000A10000041 /* AdaptiveLayout.swift */,
+				000000000000000A10000043 /* SyncMergeEngine.swift */,
+				000000000000000A10000045 /* SyncExchange.swift */,
+				000000000000000A10000047 /* NearbySecurity.swift */,
+				000000000000000A10000049 /* NearbyTransport.swift */,
+				000000000000000A1000004B /* NearbySyncModel.swift */,
+				000000000000000A1000004D /* NearbySyncView.swift */,
 				000000000000000A10000006 /* WordLibraryView.swift */,
 				000000000000000A10000007 /* PracticeView.swift */,
 				000000000000000A10000008 /* ErrorWordsView.swift */,
@@ -170,6 +191,13 @@
 				000000000000000A10000014 /* Models.swift in Sources */,
 				000000000000000A10000015 /* DataManager.swift in Sources */,
 				000000000000000A10000032 /* LearningEngine.swift in Sources */,
+				000000000000000A10000040 /* AdaptiveLayout.swift in Sources */,
+				000000000000000A10000042 /* SyncMergeEngine.swift in Sources */,
+				000000000000000A10000044 /* SyncExchange.swift in Sources */,
+				000000000000000A10000046 /* NearbySecurity.swift in Sources */,
+				000000000000000A10000048 /* NearbyTransport.swift in Sources */,
+				000000000000000A1000004A /* NearbySyncModel.swift in Sources */,
+				000000000000000A1000004C /* NearbySyncView.swift in Sources */,
 				000000000000000A10000016 /* WordLibraryView.swift in Sources */,
 				000000000000000A10000017 /* PracticeView.swift in Sources */,
 				000000000000000A10000018 /* ErrorWordsView.swift in Sources */,
@@ -308,7 +336,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
@@ -323,7 +351,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.peanut13.words800;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -339,7 +367,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
@@ -354,7 +382,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.peanut13.words800;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

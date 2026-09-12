@@ -55,6 +55,7 @@ struct PracticeView: View {
 struct PracticeSessionView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let questions: [Question]
     @State private var index = 0
     @State private var selected: Int?
@@ -65,6 +66,10 @@ struct PracticeSessionView: View {
     private var correctCount: Int { questions.filter { answers[$0.id] == $0.correctAnswer }.count }
     var body: some View {
         NavigationView {
+            GeometryReader { geometry in
+                let wide = AdaptiveLayoutRules.usesTwoColumns(
+                    width: geometry.size.width, height: geometry.size.height,
+                    regularWidth: horizontalSizeClass == .regular)
             Group {
                 if let question = current {
                     ScrollView {
@@ -72,23 +77,36 @@ struct PracticeSessionView: View {
                             HStack { Text("\(index + 1) / \(questions.count)"); Spacer(); Text(question.type.rawValue) }
                                 .font(.subheadline).foregroundColor(.secondary)
                             ProgressView(value: Double(index), total: Double(max(1, questions.count)))
-                            Text(question.source).font(.caption).foregroundColor(AppStyle.accent)
-                            Text(question.content).font(.title3).lineSpacing(8).padding(.vertical, 10)
-                            ForEach(Array(question.options.enumerated()), id: \.offset) { option, text in
-                                Button { if !submitted { selected = option } } label: {
-                                    HStack(alignment: .top, spacing: 12) {
-                                        Text(String(["A", "B", "C", "D"][option])).font(.headline)
-                                        Text(text).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
-                                        if submitted && option == question.correctAnswer { Image(systemName: "checkmark.circle.fill") }
-                                        else if submitted && selected == option { Image(systemName: "xmark.circle.fill") }
-                                    }.padding(18).foregroundColor(optionColor(option, question))
-                                        .background(optionColor(option, question).opacity(selected == option || submitted ? 0.09 : 0.04))
-                                        .cornerRadius(14)
-                                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected == option ? optionColor(option, question) : .clear, lineWidth: 1.5))
-                                }.buttonStyle(.plain).disabled(submitted)
+                            AdaptivePracticeColumns(wide: wide) {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    Text(question.source).font(.caption).foregroundColor(AppStyle.accent)
+                                    Text(question.content)
+                                        .font(wide ? .title2 : .title3).lineSpacing(8)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .padding(.vertical, 10)
+                                }.frame(maxWidth: .infinity, alignment: .topLeading)
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ForEach(Array(question.options.enumerated()), id: \.offset) { option, text in
+                                        Button { if !submitted { selected = option } } label: {
+                                            HStack(alignment: .top, spacing: 12) {
+                                                Text(String(["A", "B", "C", "D"][option])).font(.headline)
+                                                Text(text).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+                                                if submitted && option == question.correctAnswer { Image(systemName: "checkmark.circle.fill") }
+                                                else if submitted && selected == option { Image(systemName: "xmark.circle.fill") }
+                                            }.padding(18).foregroundColor(optionColor(option, question))
+                                                .background(optionColor(option, question).opacity(selected == option || submitted ? 0.09 : 0.04))
+                                                .cornerRadius(14)
+                                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected == option ? optionColor(option, question) : .clear, lineWidth: 1.5))
+                                        }.buttonStyle(.plain).disabled(submitted)
+                                    }
+                                    // No explanation, related-word links, or correct-answer styling before submission.
+                                    if submitted { ExplanationBody(question: question, selectedAnswer: selected) }
+                                }.frame(maxWidth: .infinity, alignment: .topLeading)
                             }
-                            if submitted { ExplanationBody(question: question, selectedAnswer: selected) }
-                        }.padding(20)
+                        }
+                        .padding(wide ? 32 : 20)
+                        .frame(maxWidth: 1280)
+                        .frame(maxWidth: .infinity)
                     }.id(index)
                     .safeAreaInset(edge: .bottom) {
                         Button {
@@ -100,6 +118,8 @@ struct PracticeSessionView: View {
                             Text(submitted ? (index == questions.count - 1 ? "查看本组结果" : "下一题") : "提交答案")
                                 .frame(maxWidth: .infinity).padding(10)
                         }.buttonStyle(.borderedProminent).disabled(selected == nil)
+                            .frame(maxWidth: wide ? 520 : .infinity)
+                            .frame(maxWidth: .infinity, alignment: wide ? .trailing : .center)
                             .padding().background(.regularMaterial)
                     }
                 } else {
@@ -123,13 +143,14 @@ struct PracticeSessionView: View {
                     }
                 }
             }
+            }
             .navigationTitle("逻辑填空与词义练习").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("结束") { confirmExit = true } } }
             .confirmationDialog("已提交的答题记录会保留。结束本组练习？", isPresented: $confirmExit, titleVisibility: .visible) {
                 Button("结束练习") { dismiss() }
                 Button("继续答题", role: .cancel) {}
             }
-        }.tint(AppStyle.accent)
+        }.navigationViewStyle(.stack).tint(AppStyle.accent)
     }
     private func optionColor(_ option: Int, _ q: Question) -> Color {
         if submitted && option == q.correctAnswer { return .green }

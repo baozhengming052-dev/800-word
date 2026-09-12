@@ -91,7 +91,11 @@ def validate():
         check(reference.attrib['BlueprintIdentifier'] in identifiers, 'Shared scheme target')
         check(reference.attrib['ReferencedContainer'] == 'container:Words800App.xcodeproj', 'Scheme container')
     info = plistlib.loads((app / 'Info.plist').read_bytes())
-    check(info['CFBundleShortVersionString'] == '2.0', 'Version')
+    check(info['CFBundleShortVersionString'] == '2.1', 'Version')
+    check(info['CFBundleVersion'] == '3', 'Build version')
+    check(info.get('NSLocalNetworkUsageDescription'), 'Nearby permission explanation')
+    check('_words800-sync._tcp' in info.get('NSBonjourServices', []), 'Nearby Bonjour service')
+    check('NSCameraUsageDescription' not in info, 'No unused QR camera permission')
     check('UISceneConfigurations' not in info.get('UIApplicationSceneManifest', {}), 'No nonexistent scene delegate')
     check('IPHONEOS_DEPLOYMENT_TARGET = 15.0;' in pbx, 'iOS 16.5 compatibility floor')
     icons_dir = app / 'Assets.xcassets/AppIcon.appiconset'

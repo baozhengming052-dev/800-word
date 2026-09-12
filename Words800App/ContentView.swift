@@ -113,7 +113,7 @@ struct HomeView: View {
                     }.font(.subheadline)
                     Text("已导入 \(dataManager.words.count) 个独立词条；保留原资料的增补与删除标记。")
                         .font(.footnote).foregroundColor(.secondary)
-                }.padding(20)
+                }.padding(20).frame(maxWidth: 860).frame(maxWidth: .infinity)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("花生十三").navigationBarTitleDisplayMode(.inline)

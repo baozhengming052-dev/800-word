@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import CryptoKit
 
 @MainActor final class DataManager: ObservableObject {
     static let shared = DataManager()
@@ -12,6 +13,7 @@ import UserNotifications
     private var snapshot = StudySnapshot()
     private var searchIndex: [UUID: String] = [:]
     private var questionsByID: [UUID: Question] = [:]
+    private(set) var libraryFingerprint = ""
     private let directory: URL
     private var storeURL: URL { directory.appendingPathComponent("study-v2.json") }
     private var backupURL: URL { directory.appendingPathComponent("study-v2.previous.json") }
@@ -24,7 +26,9 @@ import UserNotifications
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let url = Bundle.main.url(forResource: "library", withExtension: "json")
             guard let resource = url else { throw AppError.text("词库文件缺失，请重新安装完整安装包。") }
-            let library = try JSONDecoder().decode(Library.self, from: Data(contentsOf: resource))
+            let libraryData = try Data(contentsOf: resource)
+            let library = try JSONDecoder().decode(Library.self, from: libraryData)
+            libraryFingerprint = SHA256.hash(data: libraryData).map { String(format: "%02x", $0) }.joined()
             words = library.words; questions = library.questions
             questionsByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
             for word in words {
@@ -212,14 +216,25 @@ import UserNotifications
         return try JSONEncoder().encode(snapshot)
     }
     func importData(_ data: Data) throws {
+        let preview = try previewImport(data)
+        guard preview.conflicts.isEmpty else { throw AppError.text("备份包含冲突，请在导入预览中选择要保留的笔记和次数。") }
+        try commitImport(preview.merged, expected: preview.local)
+    }
+    func previewImport(_ data: Data) throws -> SyncMergePreview {
         let incoming = try decodeSnapshot(data)
-        var union = Dictionary(uniqueKeysWithValues: snapshot.events.map { ($0.id, $0) })
-        for event in incoming.events {
-            if let existing = union[event.id], existing != event { throw AppError.text("同一条记录内容不一致，已停止导入。") }
-            union[event.id] = event
-        }
+        return try SyncMergeEngine.preview(local: snapshot, incoming: incoming, words: words, questions: questions)
+    }
+    func validatedSnapshot(_ data: Data) throws -> StudySnapshot { try decodeSnapshot(data) }
+    func encodedSnapshot(_ value: StudySnapshot) throws -> Data {
+        let data = try JSONEncoder().encode(value)
+        _ = try decodeSnapshot(data)
+        return data
+    }
+    func commitImport(_ proposed: StudySnapshot, expected: StudySnapshot) throws {
+        try SyncMergeEngine.validateCommit(current: snapshot, expected: expected, proposed: proposed)
+        _ = try encodedSnapshot(proposed)
         let previous = snapshot
-        snapshot.events = union.values.sorted { $0.timestamp == $1.timestamp ? $0.id.uuidString < $1.id.uuidString : $0.timestamp < $1.timestamp }
+        snapshot = proposed
         do { try persist(); persistenceAvailable = true; rebuild(); refreshReminder() }
         catch { snapshot = previous; throw error }
     }

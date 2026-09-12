@@ -31,7 +31,7 @@ jobs:
           xcodebuild -list -project Words800App.xcodeproj
           bash tools/verify_macos.sh
 
-      - name: Build iPhone archive without distribution signing
+      - name: Build iPhone and iPad archive without distribution signing
         run: |
           set -euo pipefail
           mkdir -p build
