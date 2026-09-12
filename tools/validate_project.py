@@ -83,7 +83,9 @@ def validate():
     for source_file in app.glob('*.swift'):
         check(f'path = {source_file.name};' in pbx, f'Unregistered source {source_file.name}')
         check(pbx.count(f'{source_file.name} in Sources') == 2, f'Source build phase {source_file.name}')
-    check('Resources in Resources' in pbx and 'lastKnownFileType = folder; path = Resources;' in pbx, 'Bundled resource folder')
+    check('lastKnownFileType = folder; path = Resources;' not in pbx, 'Reserved Resources directory must not be copied into iOS bundle')
+    for filename in ['library.json', 'source.pdf']:
+        check(pbx.count(f'{filename} in Resources') == 2, f'Individual resource build phase: {filename}')
     scheme = ET.parse(ROOT / 'Words800App.xcodeproj/xcshareddata/xcschemes/Words800App.xcscheme')
     for reference in scheme.findall('.//BuildableReference'):
         check(reference.attrib['BlueprintIdentifier'] in identifiers, 'Shared scheme target')
@@ -124,6 +126,7 @@ def validate_ipa(path):
     with zipfile.ZipFile(path) as archive:
         check(archive.testzip() is None, 'Archive CRC')
         prefix = 'Payload/Words800App.app/'
+        check(not any(name.startswith(prefix + 'Resources/') for name in archive.namelist()), 'Reserved Resources directory inside iOS bundle')
         info = plistlib.loads(archive.read(prefix + 'Info.plist'))
         check(info['CFBundleIdentifier'] == 'com.peanut13.words800', 'Bundle ID')
         check(info['CFBundlePackageType'] == 'APPL', 'App bundle type')
@@ -133,7 +136,7 @@ def validate_ipa(path):
         check(executable[:4] == b'\xcf\xfa\xed\xfe', 'Mach-O 64-bit executable')
         check(struct.unpack('<I', executable[4:8])[0] == 0x0100000C, 'ARM64 executable, not simulator')
         for filename in ['library.json', 'source.pdf']:
-            bundled = archive.read(prefix + 'Resources/' + filename)
+            bundled = archive.read(prefix + filename)
             check(bundled == (ROOT / 'Words800App/Resources' / filename).read_bytes(), 'Complete IPA resources')
         check(prefix + 'Assets.car' in archive.namelist(), 'Compiled assets')
     print('PASS: IPA structure, ARM64 executable, iOS floor and complete bundled resources')

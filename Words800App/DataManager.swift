@@ -22,8 +22,7 @@ import UserNotifications
             .appendingPathComponent("Words800", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let url = Bundle.main.url(forResource: "library", withExtension: "json", subdirectory: "Resources")
-                ?? Bundle.main.url(forResource: "library", withExtension: "json")
+            let url = Bundle.main.url(forResource: "library", withExtension: "json")
             guard let resource = url else { throw AppError.text("词库文件缺失，请重新安装完整安装包。") }
             let library = try JSONDecoder().decode(Library.self, from: Data(contentsOf: resource))
             words = library.words; questions = library.questions

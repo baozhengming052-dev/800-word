@@ -2,7 +2,7 @@
 
 基于你提供的《高频800词.pdf》制作的个人离线 iOS 学习 App。目标设备：iPhone 14 Pro Max、iOS 16.5、已安装 TrollStore。
 
-只改本地项目；由你使用 GitHub Desktop 提交、上传，再由 GitHub Actions 编译。Windows 不需要安装 Xcode。当前交付的是源码和打包配置，尚未实际运行 GitHub 构建或真机验收。
+只改本地项目；由你使用 GitHub Desktop 提交、上传，再由 GitHub Actions 编译。Windows 不需要安装 Xcode。用户提供的首次构建日志显示学习规则测试及 Swift 编译通过，但归档失败；本地已修正资源包布局，需重新推送并验证完整打包。尚未真机验收。
 
 ## 已写入的功能
 
@@ -48,7 +48,9 @@ tests/
 tools/
 ```
 
-工作流先检查资料和工程，再执行学习规则测试，然后使用 GitHub 的 macOS / Xcode 环境构建真机 archive，封装并校验 `800词学习助手.ipa`。构建禁用发行证书签名，供 TrollStore 安装时处理；不是 App Store / TestFlight 安装包。
+工作流先检查资料、工程和资源复制布局，再执行学习规则测试，然后使用 GitHub 的 macOS / Xcode 环境构建真机 archive，通过原生 Bundle 验证后封装并校验 `800词学习助手.ipa`。构建禁用发行证书签名，供 TrollStore 安装时处理；不是 App Store / TestFlight 安装包。
+
+源码中的 `Words800App/Resources/` 不要删除。它在工程中只是分组，构建时 JSON 和 PDF 分别复制到 App 包根目录，不在安装包内创建自定义 `Resources` 文件夹。
 
 最低部署版本15.0，Swift5，Bundle ID `com.peanut13.words800`，版本2.0。请保留 Bundle ID 以便后续更新同一应用。
 

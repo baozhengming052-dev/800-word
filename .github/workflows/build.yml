@@ -26,6 +26,7 @@ jobs:
           set -euo pipefail
           xcodebuild -version
           python3 tools/validate_project.py
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
           plutil -lint Words800App/Info.plist Words800App.xcodeproj/project.pbxproj
           xcodebuild -list -project Words800App.xcodeproj
           bash tools/verify_macos.sh
@@ -50,6 +51,7 @@ jobs:
       - name: Package and verify TrollStore IPA
         run: |
           set -euo pipefail
+          swift tests/BundleArchiveCheck.swift build/Words800App.xcarchive/Products/Applications/Words800App.app
           mkdir -p build/package/Payload
           ditto build/Words800App.xcarchive/Products/Applications/Words800App.app build/package/Payload/Words800App.app
           # TrollStore signs the app during installation; no Apple account is embedded.

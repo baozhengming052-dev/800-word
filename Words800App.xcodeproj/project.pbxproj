@@ -8,7 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		000000000000000A10000032 /* LearningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000033 /* LearningEngine.swift */; };
-		000000000000000A10000030 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000031 /* Resources */; };
+		000000000000000A10000030 /* library.json in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000034 /* library.json */; };
+		000000000000000A10000036 /* source.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000035 /* source.pdf */; };
 		000000000000000A10000011 /* Words800App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000001 /* Words800App.swift */; };
 		000000000000000A10000012 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000002 /* ContentView.swift */; };
 		000000000000000A10000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000003 /* Assets.xcassets */; };
@@ -22,7 +23,8 @@
 
 /* Begin PBXFileReference section */
 		000000000000000A10000033 /* LearningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningEngine.swift; sourceTree = "<group>"; };
-		000000000000000A10000031 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
+		000000000000000A10000034 /* library.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = library.json; sourceTree = "<group>"; };
+		000000000000000A10000035 /* source.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = source.pdf; sourceTree = "<group>"; };
 		000000000000000A10000001 /* Words800App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Words800App.swift; sourceTree = "<group>"; };
 		000000000000000A10000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		000000000000000A10000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -47,6 +49,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		000000000000000A10000031 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000A10000034 /* library.json */,
+				000000000000000A10000035 /* source.pdf */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		000000000000000A1000000B /* Words800App */ = {
 			isa = PBXGroup;
 			children = (
@@ -142,7 +153,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000000000000A10000013 /* Assets.xcassets in Resources */,
-				000000000000000A10000030 /* Resources in Resources */,
+				000000000000000A10000030 /* library.json in Resources */,
+				000000000000000A10000036 /* source.pdf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

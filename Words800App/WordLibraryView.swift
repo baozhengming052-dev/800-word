@@ -361,7 +361,7 @@ struct PDFPageReader: UIViewRepresentable {
     let page: Int
     func makeUIView(context: Context) -> PDFView {
         let view = PDFView(); view.autoScales = true
-        if let url = Bundle.main.url(forResource: "source", withExtension: "pdf", subdirectory: "Resources") {
+        if let url = Bundle.main.url(forResource: "source", withExtension: "pdf") {
             view.document = PDFDocument(url: url)
             if let target = view.document?.page(at: max(0, page - 1)) { view.go(to: target) }
         }
