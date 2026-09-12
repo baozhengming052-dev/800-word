@@ -103,7 +103,29 @@ struct WordDetailView: View {
                         .buttonStyle(.borderless).accessibilityLabel("朗读词语")
                 }.padding(.vertical, 12)
             }
-            WordMeaningSections(word: word)
+            WordMeaningSection(word: word)
+            Section("个人笔记") {
+                if !record.personalNotes.isEmpty {
+                    Text(record.personalNotes)
+                        .lineSpacing(6)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+                Button { openEditor(.notes) } label: {
+                    Label(record.personalNotes.isEmpty ? "添加笔记" : "编辑笔记", systemImage: "note.text")
+                }
+                if record.noteHistory.count > 1 {
+                    DisclosureGroup("笔记历史（\(record.noteHistory.count)）") {
+                        ForEach(record.noteHistory.reversed()) { event in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(event.date, style: .date).font(.caption).foregroundColor(.secondary)
+                                Text(event.value.isEmpty ? "（清空笔记）" : event.value).font(.subheadline).textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+            }
+            WordUsageSections(word: word)
             Section("我的学习") {
                 Picker("掌握程度", selection: Binding(get: { record.masteryLevel }, set: { dataManager.updateMasteryLevel(for: word.id, level: $0) })) {
                     ForEach(MasteryLevel.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -114,18 +136,6 @@ struct WordDetailView: View {
                 Toggle("收藏这个词", isOn: Binding(get: { record.isFavorite }, set: { _ in dataManager.toggleFavorite(for: word.id) }))
                 if record.nextReviewDate != .distantFuture {
                     HStack { Text("下次复习"); Spacer(); Text(record.nextReviewDate, style: .date).foregroundColor(.secondary) }
-                }
-                Button { openEditor(.notes) } label: { Label(record.personalNotes.isEmpty ? "添加个人笔记" : "编辑个人笔记", systemImage: "note.text") }
-                if !record.personalNotes.isEmpty { Text(record.personalNotes).textSelection(.enabled) }
-                if record.noteHistory.count > 1 {
-                    DisclosureGroup("笔记历史（\(record.noteHistory.count)）") {
-                        ForEach(record.noteHistory.reversed()) { event in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(event.date, style: .date).font(.caption).foregroundColor(.secondary)
-                                Text(event.value.isEmpty ? "（清空笔记）" : event.value).font(.subheadline).textSelection(.enabled)
-                            }
-                        }
-                    }
                 }
             }
             if !record.errorHistory.isEmpty {
@@ -164,13 +174,18 @@ struct WordDetailView: View {
         else { localEditorRequest = request }
     }
 }
-struct WordMeaningSections: View {
-    @EnvironmentObject var dataManager: DataManager
+struct WordMeaningSection: View {
     let word: Word
     var body: some View {
         Section("释义 · 原资料") {
             ForEach(Array(word.meanings.enumerated()), id: \.offset) { _, meaning in Text(meaning).lineSpacing(6).textSelection(.enabled) }
         }
+    }
+}
+struct WordUsageSections: View {
+    @EnvironmentObject var dataManager: DataManager
+    let word: Word
+    var body: some View {
         if !word.keyPoints.isEmpty { Section("重点解析 · 原资料用法提示") { Text(word.keyPoints).lineSpacing(6) } }
         if !word.confusableWords.isEmpty {
             Section("关联词与辨析") {

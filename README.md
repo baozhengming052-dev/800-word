@@ -8,6 +8,11 @@
 
 以下记录源码变化，是否已经发布请查看仓库的 Releases 页面。每次更新在本节顶部增加新的 `### vX.Y.Z` 记录；正式 Release 自动读取与 Tag 完全相同的版本段。
 
+### v2.2.1
+
+- 优化：词条详情增加独立“个人笔记”卡片，位于释义下方、重点解析与关联词辨析上方；正文直接显示，支持添加、编辑和查看历史。
+- 优化：移除“我的学习”中重复的笔记区域；沿用原笔记、历史、备份和附近同步记录，不迁移或重建数据。
+
 ### v2.2.0
 
 - 新增：推送版本 Tag 后自动构建 IPA、创建 GitHub Release，并上传安装包、SHA-256 校验文件和构建信息。
@@ -43,7 +48,7 @@
 
 ## 发布方式
 
-通过 Git Tag 管理版本，例如 `v1.0.0` 表示初始版本，`v1.1.0` 表示后续新增功能的版本。当前工程已有内部版本2.1，因此这次更新建议使用 **v2.2.0**；这些历史内部版本不等于已经发布过对应 Tag。
+通过 Git Tag 管理版本，例如 `v1.0.0` 表示初始版本，`v1.1.0` 表示后续新增功能的版本。本次个人笔记布局更新建议使用 **v2.2.1**；不要复用已有的 `v2.2.0` Tag。
 
 首次使用时，确认仓库允许 GitHub Actions，默认分支 `main` 和本次 Tag 指向的提交都包含新的 `.github/workflows/build.yml`、`tools/release.py` 和 `.github/release-template.md`。发布作业已声明 `contents: write`，使用 GitHub 自动提供的 `GITHUB_TOKEN`，不需要另填个人令牌或 Apple 签名证书。若组织限制了 Actions 或写权限，需先在仓库/组织设置中放行。
 
@@ -67,7 +72,7 @@ git push origin main
 git push origin v1.1.0
 ```
 
-本次建议把上面三处 `v1.1.0` 换成 `v2.2.0`，之后按实际版本递增。执行前检查待提交文件，勿混入私人备份；Tag 必须尚未存在，并指向包含全部改动的提交。无需手动改 `Info.plist` 或工程版本号。
+本次建议把上面三处 `v1.1.0` 换成 `v2.2.1`，之后按实际版本递增。执行前检查待提交文件，勿混入私人备份；Tag 必须尚未存在，并指向包含全部改动的提交。无需手动改 `Info.plist` 或工程版本号。
 
 推送 Tag 后，Actions 自动完成检查、编译、IPA 打包与校验；全部成功才由发布作业生成 **Release vX.Y.Z**。打开仓库 **Releases → 对应版本 → Assets → Words800App.ipa**，即可直接下载安装包，不必再下载 Actions 的外层 ZIP。附带 `.sha256` 和 `release-metadata.json` 用于核对校验值、版本和源码提交；GitHub 自动提供的 Source code ZIP 不是安装包。
 
@@ -77,7 +82,7 @@ git push origin v1.1.0
 
 ### 日常上传与手动测试
 
-- 普通 `main` 推送只上传代码，不再自动构建或发布。也可以用 GitHub Desktop 完成提交和推送，再在终端执行 `git tag vX.Y.Z`、`git push origin vX.Y.Z`。
+- 普通 `main` 推送只上传代码，不再自动构建或发布。也可以全程使用 GitHub Desktop：提交后在 History 中右键新提交 → Create Tag → 填版本号 → Push origin，详见上传指南。
 - 保留 **Actions → Build IPA → Run workflow**。选择分支时仅生成测试制品，不创建 Release；版本使用工程默认值（当前2.1.0 / 构建3），制品名为 `Words800App-manual-<提交短哈希>-IPA`。
 - 手动运行若明确以现有合法 Tag 为 ref，则构建并发布该 Tag；必须与实际检出的提交一致。通常失败后直接在原 Tag 的运行页面重跑即可。
 - 网络或权限故障修正后可重跑原任务；如果改了代码，重跑旧任务仍是旧代码，应重新提交并发布一个新 Tag。
