@@ -1,0 +1,49 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Show Xcode version
+      run: xcodebuild -version
+
+    - name: Build Archive
+      run: |
+        xcodebuild archive \
+          -project Words800App.xcodeproj \
+          -scheme Words800App \
+          -archivePath $PWD/build/Words800App.xcarchive \
+          -sdk iphoneos \
+          -configuration Release \
+          -destination 'generic/platform=iOS' \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
+
+    - name: Create IPA
+      run: |
+        mkdir -p Payload
+        cp -R build/Words800App.xcarchive/Products/Applications/Words800App.app Payload/
+        zip -r 800词学习助手.ipa Payload
+        rm -rf Payload
+
+    - name: Upload IPA
+      uses: actions/upload-artifact@v4
+      with:
+        name: 800词学习助手
+        path: 800词学习助手.ipa
+        retention-days: 30
