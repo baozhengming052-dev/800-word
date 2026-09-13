@@ -32,20 +32,28 @@ struct ProfileView: View {
                     NavigationLink(destination: QuestionHistoryView()) { Label("答题记录", systemImage: "list.bullet.rectangle") }
                 }
                 Section("设备与备份") {
+                    if dataManager.contentConflictCount > 0 {
+                        Button {
+                            do { importPreview = try dataManager.previewImport(dataManager.exportData()) }
+                            catch { dataManager.message = error.localizedDescription }
+                        } label: { Label("处理本机内容冲突（\(dataManager.contentConflictCount)）", systemImage: "exclamationmark.triangle") }
+                        Text("先核对冲突版本或同名词。被归档的词仍可到词库的个人归档中改名、恢复。")
+                            .font(.footnote).foregroundColor(.secondary)
+                    }
                     NavigationLink(destination: NearbySyncView(dataManager: dataManager)) {
                         Label("附近设备同步 · iPhone / iPad", systemImage: "ipad.and.iphone")
                     }
                     Button {
                         do { exportDocument = BackupDocument(data: try dataManager.exportData()); exportPresented = true }
                         catch { dataManager.message = error.localizedDescription }
-                    } label: { Label("导出学习记录", systemImage: "square.and.arrow.up") }
+                    } label: { Label("导出内容与学习记录", systemImage: "square.and.arrow.up") }
                     Button { importPresented = true } label: { Label("导入学习备份", systemImage: "square.and.arrow.down") }
-                    Text("记录保存在本机。导出文件包含笔记、收藏、答题和错误次数；导入先预览，再合并。重复导入不会重复计数。卸载前请先导出备份。")
+                    Text("记录保存在本机。v3 备份包含手动词条、题目的全部版本，以及笔记、收藏、答题和错误次数。仍可导入旧 v2 备份；不会清空已有个人内容。先预览冲突，再合并。附近同步前请把两台 App 都升级到支持 v3 的版本。卸载前请先导出备份。")
                         .font(.footnote).foregroundColor(.secondary)
                 }
                 Section("资料与版本") {
                     Text("政名政利公考800词 · \(appVersion)")
-                    Text("你的 PDF 包含成语与实词、增补和删除标记。所有词条保留原资料页码；自编例句与模拟题单独标注。")
+                    Text("你的 PDF 包含成语与实词、增补和删除标记。原词条保留资料页码；手动添加的词和题目单独标注。")
                         .font(.footnote).foregroundColor(.secondary)
                     Text("离线使用；本地发音使用 iOS 语音。无需账号。").font(.footnote).foregroundColor(.secondary)
                 }

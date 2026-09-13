@@ -38,6 +38,17 @@ import Foundation
         assert(sample.events == decoded.events, "Backup is lossless")
         let reduced = LearningEngine.reduce(words: library.words, questions: library.questions, events: decoded.events)
         assert(reduced.answers.count == 2 && reduced.answers.filter { $0.isCorrect }.count == 1, "Statistics reflect actual attempts")
-        print("PASS: 15 learning-engine assertions")
+        let ownWord = PersonalRevision(entryID: UUID(), timestamp: t, word: PersonalWordContent(word: "自己的词", meaning: "意义"))
+        let otherWord = PersonalRevision(entryID: UUID(), timestamp: t, word: PersonalWordContent(word: word.word, meaning: "同名个人词"))
+        let original = PersonalRevision(entryID: UUID(), timestamp: t, question: PersonalQuestionContent(content: "旧题", options: ["甲", "乙", "丙", "丁"], correctAnswer: 1, explanation: "旧解析", relatedWordIDs: [ownWord.entryID]))
+        let edit = PersonalRevision(entryID: original.entryID, parents: [original.id], timestamp: t + 1, question: PersonalQuestionContent(content: "新题", options: ["甲", "乙", "丙", "丁"], correctAnswer: 0, explanation: "新解析", relatedWordIDs: [otherWord.entryID]))
+        let catalog = try SnapshotCodec.validate(snapshot: StudySnapshot(revisions: [ownWord, otherWord, original, edit]), builtInWords: library.words, builtInQuestions: library.questions, now: t)
+        let oldAnswer = StudyEvent(kind: "answer", value: "0", timestamp: t, questionID: original.id)
+        let historical = LearningEngine.reduce(words: catalog.words, questions: catalog.questions, events: [oldAnswer])
+        assert(historical.answers.first?.isCorrect == false, "Old answers must use the old answer key")
+        assert(historical.records[ownWord.entryID]?.errorCount == 1 && historical.records[otherWord.entryID] == nil, "Old answers retain the original UUID association")
+        let builtInAnswer = LearningEngine.reduce(words: catalog.words, questions: catalog.questions, events: [wrong])
+        assert(builtInAnswer.records[word.id]?.errorCount == 1 && builtInAnswer.records[otherWord.entryID] == nil, "Built-in names never capture personal words")
+        print("PASS: learning rules and revision-specific historical answers/links")
     }
 }

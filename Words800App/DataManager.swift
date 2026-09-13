@@ -7,6 +7,11 @@ import CryptoKit
     static let shared = DataManager()
     @Published private(set) var words: [Word] = []
     @Published private(set) var questions: [Question] = []
+    @Published private(set) var activeQuestions: [Question] = []
+    @Published private(set) var archivedWordIDs: Set<UUID> = []
+    @Published private(set) var personalHeads: [UUID: [PersonalRevision]] = [:]
+    @Published private(set) var contentConflictCount = 0
+    @Published private(set) var snapshotGeneration = 0
     @Published private(set) var studyRecords: [UUID: StudyRecord] = [:]
     @Published private(set) var questionRecords: [QuestionRecord] = []
     @Published var message = ""
@@ -15,8 +20,9 @@ import CryptoKit
     private var questionsByID: [UUID: Question] = [:]
     private(set) var libraryFingerprint = ""
     private let directory: URL
-    private var storeURL: URL { directory.appendingPathComponent("study-v2.json") }
-    private var backupURL: URL { directory.appendingPathComponent("study-v2.previous.json") }
+    private var builtInWords: [Word] = []
+    private var builtInQuestions: [Question] = []
+    private var store: SnapshotStore?
     private var persistenceAvailable = true
 
     private init() {
@@ -29,24 +35,16 @@ import CryptoKit
             let libraryData = try Data(contentsOf: resource)
             let library = try JSONDecoder().decode(Library.self, from: libraryData)
             libraryFingerprint = SHA256.hash(data: libraryData).map { String(format: "%02x", $0) }.joined()
+            builtInWords = library.words; builtInQuestions = library.questions
             words = library.words; questions = library.questions
-            questionsByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
-            for word in words {
-                let text = ([word.word, word.pinyin, word.category, word.subcategory, word.keyPoints]
-                    + word.meanings + word.occurrences.map { $0.originalWord }
-                    + word.confusableWords.map { $0.word + $0.difference }).joined(separator: " ")
-                searchIndex[word.id] = normalize(text)
+            let storage = SnapshotStore(directory: directory) { bytes in
+                try SnapshotCodec.decode(data: bytes, builtInWords: library.words, builtInQuestions: library.questions)
             }
-            if FileManager.default.fileExists(atPath: storeURL.path) {
-                do { snapshot = try decodeSnapshot(Data(contentsOf: storeURL)) }
-                catch {
-                    let corrupt = directory.appendingPathComponent("unreadable-\(UUID().uuidString).json")
-                    try FileManager.default.copyItem(at: storeURL, to: corrupt)
-                    snapshot = try decodeSnapshot(Data(contentsOf: backupURL))
-                    message = "已从上一份备份恢复学习记录，原文件已保留。"
-                }
-            } else { try migrateLegacy() }
-            rebuild()
+            store = storage
+            if let loaded = try storage.load() { snapshot = loaded }
+            else { try migrateLegacy() }
+            try rebuild()
+            if let recovery = storage.recoveryMessage { message = recovery }
         } catch {
             persistenceAvailable = false
             message = "载入失败，已暂停写入以保护记录：\(error.localizedDescription)"
@@ -58,15 +56,17 @@ import CryptoKit
     }
     func getStudyRecord(for id: UUID) -> StudyRecord { studyRecords[id] ?? StudyRecord() }
     var categories: [String] {
-        words.reduce(into: [String]()) { result, word in
+        activeWords.reduce(into: [String]()) { result, word in
             for occurrence in word.occurrences where !result.contains(occurrence.category) { result.append(occurrence.category) }
+            if word.isPersonal && !result.contains(word.category) { result.append(word.category) }
         }
     }
-    var errorWords: [Word] { sorted(words.filter { getStudyRecord(for: $0.id).errorCount > 0 }, by: .errors) }
+    var activeWords: [Word] { words.filter { !archivedWordIDs.contains($0.id) } }
+    var errorWords: [Word] { sorted(activeWords.filter { getStudyRecord(for: $0.id).errorCount > 0 }, by: .errors) }
     var favoriteWords: [Word] { words.filter { getStudyRecord(for: $0.id).isFavorite } }
-    var newWords: [Word] { words.filter { !($0.sourceDeleted) && getStudyRecord(for: $0.id).masteryLevel == .unknown } }
+    var newWords: [Word] { activeWords.filter { !($0.sourceDeleted) && getStudyRecord(for: $0.id).masteryLevel == .unknown } }
     var dueWords: [Word] {
-        sorted(words.filter { word in
+        sorted(activeWords.filter { word in
             let r = getStudyRecord(for: word.id)
             guard r.lastStudyDate != .distantPast else { return false }
             return r.nextReviewDate <= Date()
@@ -78,7 +78,7 @@ import CryptoKit
         Set(snapshot.events.filter { $0.kind == "rating" && Calendar.current.isDateInToday($0.date) }.compactMap { $0.wordID }).count
     }
     func belongs(_ word: Word, to category: String) -> Bool {
-        category == "全部分类" || word.occurrences.contains { $0.category == category }
+        category == "全部分类" || (word.isPersonal && word.category == category) || word.occurrences.contains { $0.category == category }
     }
     func sorted(_ list: [Word], by sort: WordSort) -> [Word] {
         switch sort {
@@ -95,7 +95,8 @@ import CryptoKit
     private func normalize(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: Locale(identifier: "zh_CN"))
     }
-    func searchWords(keyword: String) -> [Word] {
+    func searchWords(keyword: String, includePersonalArchived: Bool = false) -> [Word] {
+        let words = includePersonalArchived ? self.words : activeWords
         let key = normalize(keyword).trimmingCharacters(in: .whitespacesAndNewlines)
         if key.isEmpty { return words }
         let tokens = key.split(whereSeparator: { $0.isWhitespace }).map(String.init)
@@ -127,26 +128,26 @@ import CryptoKit
     }
     @discardableResult private func append(_ event: StudyEvent) -> Bool {
         guard persistenceAvailable else { message = "学习记录未能载入，请先在“我的”导入有效备份。"; return false }
-        let previous = snapshot
+        var proposed = snapshot
         // Preserve local action order even when two actions share a clock tick.
         let stamp = max(event.timestamp, (snapshot.events.map { $0.timestamp }.max() ?? 0) + 0.001)
-        snapshot.events.append(StudyEvent(id: event.id, wordID: event.wordID, kind: event.kind,
+        proposed.events.append(StudyEvent(id: event.id, wordID: event.wordID, kind: event.kind,
             value: event.value, timestamp: stamp, questionID: event.questionID))
-        do { try persist(); rebuild(); refreshReminder(); return true }
-        catch { snapshot = previous; message = "保存失败：\(error.localizedDescription)"; return false }
+        do { try save(proposed, expected: snapshot, requireResolvedContent: false); return true }
+        catch { message = "保存失败：\(error.localizedDescription)"; return false }
     }
     func toggleFavorite(for id: UUID) {
         append(StudyEvent(wordID: id, kind: "favorite", value: getStudyRecord(for: id).isFavorite ? "false" : "true"))
     }
     func updateMasteryLevel(for id: UUID, level: MasteryLevel) { append(StudyEvent(wordID: id, kind: "mastery", value: level.rawValue)) }
-    func updateNotes(for id: UUID, notes: String) {
-        guard notes != getStudyRecord(for: id).personalNotes else { return }
-        append(StudyEvent(wordID: id, kind: "note", value: notes))
+    @discardableResult func updateNotes(for id: UUID, notes: String) -> Bool {
+        guard notes != getStudyRecord(for: id).personalNotes else { return true }
+        return append(StudyEvent(wordID: id, kind: "note", value: notes))
     }
-    func setErrorCount(for id: UUID, count: Int) {
+    @discardableResult func setErrorCount(for id: UUID, count: Int) -> Bool {
         // Record the correction itself so manually editing a total never erases past questions.
         let delta = max(0, min(99999, count)) - getStudyRecord(for: id).errorCount
-        if delta != 0 { append(StudyEvent(wordID: id, kind: "errorAdjustment", value: String(delta))) }
+        return delta == 0 || append(StudyEvent(wordID: id, kind: "errorAdjustment", value: String(delta)))
     }
     func reviewed(_ id: UUID) { append(StudyEvent(wordID: id, kind: "review", value: "")) }
     @discardableResult func rate(_ id: UUID, rating: Int) -> Bool {
@@ -158,58 +159,44 @@ import CryptoKit
         return append(StudyEvent(kind: "answer", value: String(selectedAnswer), questionID: questionId))
     }
     func practiceQuestions(type: String, category: String, errorsOnly: Bool, limit: Int, includeArchived: Bool = false) -> [Question] {
-        let weak = Set(errorWords.map { $0.word })
-        let eligible = Set(words.filter { belongs($0, to: category) && (includeArchived || !$0.sourceDeleted) }.map { $0.word })
-        let filtered = questions.filter { q in
-            (type == "全部题型" || q.type.rawValue == type) && q.relatedWords.contains(where: eligible.contains)
-            && (!errorsOnly || q.relatedWords.contains(where: weak.contains))
+        let weak = Set(errorWords.map { $0.id })
+        let eligible = Set(activeWords.filter { belongs($0, to: category) && (includeArchived || !$0.sourceDeleted) }.map { $0.id })
+        let filtered = activeQuestions.filter { q in
+            let linked = relatedWordIDs(for: q)
+            return (type == "全部题型" || q.type.rawValue == type) && linked.contains(where: eligible.contains)
+            && (!errorsOnly || linked.contains(where: weak.contains))
         }
         if errorsOnly {
-            let weights = Dictionary(uniqueKeysWithValues: errorWords.map { ($0.word, getStudyRecord(for: $0.id).errorCount) })
+            let weights = Dictionary(uniqueKeysWithValues: errorWords.map { ($0.id, getStudyRecord(for: $0.id).errorCount) })
             return Array(filtered.shuffled().sorted {
-                ($0.relatedWords.map { weights[$0, default: 0] }.max() ?? 0) >
-                ($1.relatedWords.map { weights[$0, default: 0] }.max() ?? 0)
+                (relatedWordIDs(for: $0).map { weights[$0, default: 0] }.max() ?? 0) >
+                (relatedWordIDs(for: $1).map { weights[$0, default: 0] }.max() ?? 0)
             }.prefix(limit))
         }
         return Array(filtered.shuffled().prefix(limit))
     }
-    private func rebuild() {
+    private func rebuild() throws {
+        publish(try catalog(for: snapshot))
+    }
+    private func publish(_ catalog: PersonalCatalog) {
+        words = catalog.words; questions = catalog.questions
+        activeQuestions = PersonalTransactions.practiceQuestions(catalog: catalog)
+        archivedWordIDs = catalog.archivedWordIDs; personalHeads = catalog.headsByEntryID
+        contentConflictCount = catalog.conflictingEntryIDs.count + catalog.nameCollisions.count
+        questionsByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
+        searchIndex = [:]
+        for word in words {
+            let text = ([word.word, word.pinyin, word.category, word.subcategory, word.keyPoints]
+                + word.meanings + word.occurrences.map { $0.originalWord }
+                + word.confusableWords.map { $0.word + $0.difference }).joined(separator: " ")
+            searchIndex[word.id] = normalize(text)
+        }
         let state = LearningEngine.reduce(words: words, questions: questions, events: snapshot.events)
         studyRecords = state.records; questionRecords = state.answers
     }
     func question(for event: StudyEvent) -> Question? { event.questionID.flatMap { questionsByID[$0] } }
-    private func persist() throws {
-        let data = try JSONEncoder().encode(snapshot)
-        // A merged backup must also meet the limits enforced on the next launch.
-        _ = try decodeSnapshot(data)
-        // Never overwrite the last good backup with a corrupt primary file.
-        if let previous = try? Data(contentsOf: storeURL), (try? decodeSnapshot(previous)) != nil {
-            try previous.write(to: backupURL, options: .atomic)
-        }
-        try data.write(to: storeURL, options: .atomic)
-    }
     private func decodeSnapshot(_ data: Data) throws -> StudySnapshot {
-        guard data.count <= 20_000_000 else { throw AppError.text("备份文件过大。") }
-        let value = try JSONDecoder().decode(StudySnapshot.self, from: data)
-        guard value.schemaVersion == 2, value.events.count <= 100000 else { throw AppError.text("不支持的备份版本或记录数量。") }
-        let kinds = Set(["answer", "favorite", "mastery", "note", "errorAdjustment", "review", "rating"])
-        let ids = Set(words.map { $0.id })
-        var seen = Set<UUID>()
-        for e in value.events {
-            guard seen.insert(e.id).inserted, kinds.contains(e.kind), e.timestamp.isFinite,
-                  e.timestamp >= 0, e.timestamp <= Date().timeIntervalSince1970 * 1000 + 86400000,
-                  e.value.utf8.count <= 100000 else { throw AppError.text("备份中有无效或重复记录。") }
-            if e.kind == "answer" {
-                guard let id = e.questionID, let q = questionsByID[id], let n = Int(e.value), q.options.indices.contains(n) else {
-                    throw AppError.text("备份题库版本不匹配。")
-                }
-            } else if e.wordID == nil || !ids.contains(e.wordID!) { throw AppError.text("备份包含不属于此词库的词条。") }
-            if e.kind == "errorAdjustment" { guard let n = Int(e.value), (-99999...99999).contains(n) else { throw AppError.text("无效的错误次数调整。") } }
-            if e.kind == "favorite" && !["true", "false"].contains(e.value) { throw AppError.text("无效的收藏记录。") }
-            if e.kind == "mastery" && MasteryLevel(rawValue: e.value) == nil { throw AppError.text("无效的掌握程度。") }
-            if e.kind == "rating" && !["0", "1", "2"].contains(e.value) { throw AppError.text("无效的学习反馈。") }
-        }
-        return value
+        try SnapshotCodec.decode(data: data, builtInWords: builtInWords, builtInQuestions: builtInQuestions)
     }
     func exportData() throws -> Data {
         guard persistenceAvailable else { throw AppError.text("记录尚未成功载入，不能导出空白备份覆盖你的有效备份。") }
@@ -217,12 +204,12 @@ import CryptoKit
     }
     func importData(_ data: Data) throws {
         let preview = try previewImport(data)
-        guard preview.conflicts.isEmpty else { throw AppError.text("备份包含冲突，请在导入预览中选择要保留的笔记和次数。") }
+        guard preview.contentConflicts.isEmpty, preview.conflicts.isEmpty else { throw AppError.text("备份包含冲突，请在导入预览中选择要保留的内容。") }
         try commitImport(preview.merged, expected: preview.local)
     }
     func previewImport(_ data: Data) throws -> SyncMergePreview {
         let incoming = try decodeSnapshot(data)
-        return try SyncMergeEngine.preview(local: snapshot, incoming: incoming, words: words, questions: questions)
+        return try SyncMergeEngine.preview(local: snapshot, incoming: incoming, words: builtInWords, questions: builtInQuestions)
     }
     func validatedSnapshot(_ data: Data) throws -> StudySnapshot { try decodeSnapshot(data) }
     func encodedSnapshot(_ value: StudySnapshot) throws -> Data {
@@ -231,12 +218,58 @@ import CryptoKit
         return data
     }
     func commitImport(_ proposed: StudySnapshot, expected: StudySnapshot) throws {
+        try save(proposed, expected: expected, requireResolvedContent: true, recovering: true)
+    }
+    func catalog(for value: StudySnapshot) throws -> PersonalCatalog {
+        try SnapshotCodec.validate(snapshot: value, builtInWords: builtInWords, builtInQuestions: builtInQuestions)
+    }
+    func validateProposal(_ proposed: StudySnapshot, expected: StudySnapshot) throws {
         try SyncMergeEngine.validateCommit(current: snapshot, expected: expected, proposed: proposed)
-        _ = try encodedSnapshot(proposed)
-        let previous = snapshot
-        snapshot = proposed
-        do { try persist(); persistenceAvailable = true; rebuild(); refreshReminder() }
-        catch { snapshot = previous; throw error }
+        try SyncMergeEngine.validateProposal(proposed, words: builtInWords, questions: builtInQuestions)
+    }
+    func resolveContent(_ preview: SyncMergePreview, choices: [String: UUID]) throws -> SyncMergePreview {
+        try SyncMergeEngine.validateCommit(current: snapshot, expected: preview.local, proposed: preview.merged)
+        return try SyncMergeEngine.resolveContent(preview: preview, choices: choices, words: builtInWords, questions: builtInQuestions)
+    }
+    private func save(_ proposed: StudySnapshot, expected: StudySnapshot, requireResolvedContent: Bool, recovering: Bool = false) throws {
+        guard persistenceAvailable || recovering else { throw AppError.text("记录未能载入，写入已暂停。请在“我的”导入有效备份后重试。") }
+        guard let store = store else { throw AppError.text("词库或存储目录未能载入，无法安全保存。") }
+        try SyncMergeEngine.validateCommit(current: snapshot, expected: expected, proposed: proposed)
+        let catalog: PersonalCatalog
+        if requireResolvedContent {
+            catalog = try SyncMergeEngine.validateProposal(proposed, words: builtInWords, questions: builtInQuestions)
+        } else { catalog = try self.catalog(for: proposed) }
+        try store.save(proposed)
+        snapshot = proposed; persistenceAvailable = true
+        publish(catalog); snapshotGeneration += 1; refreshReminder()
+    }
+    func expectedHeads(for entryID: UUID) -> Set<UUID> { Set((personalHeads[entryID] ?? []).map(\.id)) }
+    func currentRevision(for entryID: UUID) -> PersonalRevision? { personalHeads[entryID]?.last }
+    func relatedWordIDs(for question: Question) -> [UUID] {
+        LearningEngine.relatedWordIDs(for: question, words: builtInWords)
+    }
+    func matchingWords(_ name: String, excluding entryID: UUID? = nil) -> [Word] {
+        let key = PersonalLibrary.normalizedName(name)
+        return activeWords.filter { $0.id != entryID && PersonalLibrary.normalizedName($0.word) == key }
+    }
+    @discardableResult func savePersonalWord(content: PersonalWordContent, wordID: UUID,
+                                             expectedHeads: Set<UUID>, notes: String?) throws -> UUID {
+        let proposed = try PersonalTransactions.word(snapshot: snapshot, builtInWords: builtInWords, builtInQuestions: builtInQuestions,
+            content: content, entryID: wordID, expectedHeads: expectedHeads, notes: notes)
+        try save(proposed, expected: snapshot, requireResolvedContent: true)
+        return wordID
+    }
+    @discardableResult func savePersonalQuestion(content: PersonalQuestionContent, entryID: UUID,
+                                                 expectedHeads: Set<UUID>) throws -> UUID {
+        let proposed = try PersonalTransactions.question(snapshot: snapshot, builtInWords: builtInWords, builtInQuestions: builtInQuestions,
+            content: content, entryID: entryID, expectedHeads: expectedHeads)
+        try save(proposed, expected: snapshot, requireResolvedContent: true)
+        return entryID
+    }
+    func setPersonalArchived(entryID: UUID, expectedHeads: Set<UUID>, archived: Bool) throws {
+        let proposed = try PersonalTransactions.archive(snapshot: snapshot, builtInWords: builtInWords, builtInQuestions: builtInQuestions,
+            entryID: entryID, expectedHeads: expectedHeads, archived: archived)
+        try save(proposed, expected: snapshot, requireResolvedContent: true)
     }
 
     // Local notifications: errors first, then new words. No network or push service.
@@ -309,6 +342,7 @@ import CryptoKit
             guard let id = w["id"] as? String, let name = w["word"] as? String else { return nil }
             return (id.uppercased(), name)
         })
+        var proposed = StudySnapshot()
         if raw.count >= 2 {
             for i in stride(from: 0, to: raw.count - 1, by: 2) {
                 guard let oldID = raw[i] as? String, let r = raw[i + 1] as? [String: Any],
@@ -320,10 +354,12 @@ import CryptoKit
                     if kind == "favorite" { value = ((r[key] as? Bool) ?? false) ? "true" : "false" }
                     else if kind == "errorAdjustment" { value = String((r[key] as? Int) ?? 0) }
                     else { value = (r[key] as? String) ?? (kind == "mastery" ? "未学习" : "") }
-                    snapshot.events.append(StudyEvent(wordID: w.id, kind: kind, value: value, timestamp: stamp + Double(index)))
+                    proposed.events.append(StudyEvent(wordID: w.id, kind: kind, value: value, timestamp: stamp + Double(index)))
                 }
             }
         }
-        try persist()
+        guard let store = store else { throw AppError.text("存储目录尚未准备好。") }
+        try store.save(proposed)
+        snapshot = proposed
     }
 }

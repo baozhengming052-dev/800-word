@@ -9,16 +9,24 @@ struct WordLibraryView: View {
     @State private var status = "全部状态"
     @State private var sort: WordSort = .original
     @State private var showArchived = false
+    @State private var personalOnly = false
+    @State private var personalArchived = false
+    @State private var addingWord = false
     @State private var selectedWordID: UUID?
     private var filtered: [Word] {
-        dataManager.sorted(dataManager.searchWords(keyword: search).filter {
+        dataManager.sorted(dataManager.searchWords(keyword: search, includePersonalArchived: personalArchived).filter {
             dataManager.belongs($0, to: category) && (showArchived || !$0.sourceDeleted)
             && (status == "全部状态" || dataManager.getStudyRecord(for: $0.id).masteryLevel.rawValue == status)
+            && (!personalOnly || $0.isPersonal)
+            && (!personalArchived || dataManager.archivedWordIDs.contains($0.id))
         }, by: sort)
     }
     var body: some View {
         AdaptiveWordBrowser(title: "词库", words: filtered, selection: $selectedWordID) { wide, compactDetail in
             VStack(spacing: 0) {
+                Picker("词库范围", selection: $personalOnly) {
+                    Text("全部").tag(false); Text("我的添加").tag(true)
+                }.pickerStyle(.segmented).padding(.horizontal).padding(.top, 8)
                 HStack {
                     Menu {
                         Picker("分类", selection: $category) {
@@ -36,6 +44,7 @@ struct WordLibraryView: View {
                             ForEach(WordSort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                         }
                         Toggle("显示原资料删除词", isOn: $showArchived)
+                        Toggle("只看个人归档词", isOn: $personalArchived)
                     } label: { Label("筛选与排序", systemImage: "slider.horizontal.3") }
                 }.font(.subheadline).padding()
                 HStack {
@@ -56,7 +65,18 @@ struct WordLibraryView: View {
                 }
             }
             .searchable(text: $search, prompt: "词语、释义、含义、关键词")
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) {
+                Button { addingWord = true } label: { Label("添加词条", systemImage: "plus") }
+            } }
         }
+        .sheet(isPresented: $addingWord) {
+            PersonalWordEditor(onSaved: selectSavedWord, onUseExisting: selectSavedWord)
+        }
+    }
+    private func selectSavedWord(_ id: UUID) {
+        search = ""; category = "全部分类"; status = "全部状态"
+        personalOnly = false; personalArchived = false; showArchived = true
+        selectedWordID = id
     }
 }
 struct WordRowView: View {
@@ -70,6 +90,7 @@ struct WordRowView: View {
                     Text(word.word).font(.title3.weight(.semibold))
                     if record.isFavorite { Image(systemName: "star.fill").foregroundColor(.orange).font(.caption) }
                     if word.sourceDeleted { Text("原资料删除").font(.caption2).foregroundColor(.secondary) }
+                    if word.isPersonal { Text(dataManager.archivedWordIDs.contains(word.id) ? "已归档" : "手动添加").font(.caption2).foregroundColor(.secondary) }
                 }
                 Text(word.meanings.first ?? "").font(.subheadline).foregroundColor(.secondary).lineLimit(2)
                 Text(word.category + (word.subcategory.isEmpty ? "" : " · " + word.subcategory)).font(.caption2).foregroundColor(.secondary)
@@ -87,8 +108,12 @@ struct WordDetailView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.presentWordEditor) private var presentWordEditor
     @StateObject private var speaker = WordSpeaker()
-    let word: Word
+    private let initialWord: Word
+    private var word: Word { dataManager.words.first(where: { $0.id == initialWord.id }) ?? initialWord }
+    init(word: Word) { initialWord = word }
     @State private var localEditorRequest: WordEditorRequest?
+    @State private var archiveRequest: PersonalRevision?
+    @State private var archiveError = ""
     private var record: StudyRecord { dataManager.getStudyRecord(for: word.id) }
     var body: some View {
         List {
@@ -154,17 +179,44 @@ struct WordDetailView: View {
                     }
                 }
             }
-            Section("原始资料") {
+            Section("关联练习") {
+                let related = dataManager.activeQuestions.filter { dataManager.relatedWordIDs(for: $0).contains(word.id) }
+                Text(related.isEmpty ? "暂时没有关联题目，可以手动添加。" : "有 \(related.count) 道使用中的关联题目，可在刷题中练习。")
+                    .font(.subheadline).foregroundColor(.secondary)
+                Button { openEditor(.addQuestion) } label: { Label("给这个词添加题目", systemImage: "plus.square") }
+                    .disabled(dataManager.archivedWordIDs.contains(word.id))
+            }
+            if word.isPersonal {
+                Section("我的词条 · 手动添加") {
+                    Text(dataManager.archivedWordIDs.contains(word.id) ? "已归档：不加入新学习和提醒，历史仍保留。" : "这是你手动添加的词条。")
+                        .font(.footnote).foregroundColor(.secondary)
+                    Button("编辑词条内容") { openEditor(.personalWord) }
+                    Button(dataManager.archivedWordIDs.contains(word.id) ? "恢复词条" : "归档词条") {
+                        archiveRequest = dataManager.currentRevision(for: word.id)
+                    }
+                    if !archiveError.isEmpty { Text(archiveError).foregroundColor(.red) }
+                }
+            } else { Section("原始资料") {
                 Text("高频800词.pdf · 第 \(word.sourcePages) 页").font(.subheadline)
                 if word.sourceDeleted { Text("原资料标注删除，保留供查阅；默认不加入新词计划。").foregroundColor(.secondary) }
                 ForEach(Array(word.occurrences.enumerated()), id: \.offset) { _, occurrence in
                     if !occurrence.correctionNote.isEmpty { Text(occurrence.correctionNote).font(.footnote).foregroundColor(.orange) }
                 }
                 Button("查看 PDF 原页") { openEditor(.source) }
-            }
+            } }
         }
         .navigationTitle(word.word).navigationBarTitleDisplayMode(.inline)
         .sheet(item: $localEditorRequest) { WordEditorSheet(request: $0) }
+        .confirmationDialog("确认更改词条的归档状态？学习历史会保留。", isPresented: Binding(get: { archiveRequest != nil }, set: { if !$0 { archiveRequest = nil } }), titleVisibility: .visible) {
+            if let pending = archiveRequest {
+                Button(pending.archived ? "恢复" : "归档") {
+                    do { try dataManager.setPersonalArchived(entryID: word.id, expectedHeads: [pending.id], archived: !pending.archived) }
+                    catch { archiveError = error.localizedDescription }
+                    archiveRequest = nil
+                }
+            }
+            Button("取消", role: .cancel) { archiveRequest = nil }
+        }
         .onDisappear { speaker.stop() }
     }
 
@@ -177,7 +229,7 @@ struct WordDetailView: View {
 struct WordMeaningSection: View {
     let word: Word
     var body: some View {
-        Section("释义 · 原资料") {
+        Section(word.isPersonal ? "释义 · 手动添加" : "释义 · 原资料") {
             ForEach(Array(word.meanings.enumerated()), id: \.offset) { _, meaning in Text(meaning).lineSpacing(6).textSelection(.enabled) }
         }
     }
@@ -186,12 +238,12 @@ struct WordUsageSections: View {
     @EnvironmentObject var dataManager: DataManager
     let word: Word
     var body: some View {
-        if !word.keyPoints.isEmpty { Section("重点解析 · 原资料用法提示") { Text(word.keyPoints).lineSpacing(6) } }
+        if !word.keyPoints.isEmpty { Section(word.isPersonal ? "用法与重点 · 手动添加" : "重点解析 · 原资料用法提示") { Text(word.keyPoints).lineSpacing(6) } }
         if !word.confusableWords.isEmpty {
             Section("关联词与辨析") {
                 ForEach(Array(word.confusableWords.enumerated()), id: \.offset) { _, item in
                     VStack(alignment: .leading, spacing: 8) {
-                        if let related = dataManager.words.first(where: { $0.word == item.word }) {
+                        if let related = dataManager.words.first(where: { !$0.isPersonal && $0.word == item.word }) {
                             NavigationLink(item.word, destination: WordDetailView(word: related)).font(.headline)
                         } else { Text(item.word).font(.headline) }
                         Text(item.difference).font(.subheadline).foregroundColor(.secondary).lineSpacing(4)
@@ -238,7 +290,7 @@ struct ErrorCountEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { if let value = validCount { dataManager.setErrorCount(for: word.id, count: value); dismiss() } }.disabled(validCount == nil)
+                    Button("保存") { if let value = validCount, dataManager.setErrorCount(for: word.id, count: value) { dismiss() } }.disabled(validCount == nil)
                 }
             }
             .onAppear {
@@ -261,7 +313,7 @@ struct NotesEditorView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("保存") { dataManager.updateNotes(for: word.id, notes: notes); dismiss() }.disabled(notes.utf8.count > 100000) }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { if dataManager.updateNotes(for: word.id, notes: notes) { dismiss() } }.disabled(notes.utf8.count > 100000) }
                 }.onAppear {
                     guard !loadedDraft else { return }
                     notes = dataManager.getStudyRecord(for: word.id).personalNotes
@@ -355,7 +407,7 @@ struct StudySessionView: View {
             guard !loaded else { return }; loaded = true
             if title != "提醒巩固", let saved = UserDefaults.standard.dictionary(forKey: sessionKey),
                let ids = saved["ids"] as? [String], let progress = saved["index"] as? Int, progress >= 0, progress < ids.count {
-                let restored = ids.compactMap { id in dataManager.words.first { $0.id.uuidString == id } }
+                let restored = ids.compactMap { id in dataManager.activeWords.first { $0.id.uuidString == id } }
                 if restored.count == ids.count { queue = restored; index = progress } else { queue = words }
             } else { queue = words }
             saveProgress()

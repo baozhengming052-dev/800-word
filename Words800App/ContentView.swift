@@ -28,14 +28,14 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .reviewNotification)) { notification in
             UserDefaults.standard.removeObject(forKey: "pendingNotificationWords")
             let ids = notification.userInfo?["wordIDs"] as? [String] ?? []
-            notificationWords = ids.compactMap { id in dataManager.words.first { $0.id.uuidString == id } }
+            notificationWords = ids.compactMap { id in dataManager.activeWords.first { $0.id.uuidString == id } }
             if notificationWords.isEmpty { selectedTab = 3 } else { showNotificationReview = true }
         }
         .onAppear {
             dataManager.refreshReminder()
             let ids = UserDefaults.standard.stringArray(forKey: "pendingNotificationWords") ?? []
             if !ids.isEmpty {
-                notificationWords = ids.compactMap { id in dataManager.words.first { $0.id.uuidString == id } }
+                notificationWords = ids.compactMap { id in dataManager.activeWords.first { $0.id.uuidString == id } }
                 showNotificationReview = !notificationWords.isEmpty
                 UserDefaults.standard.removeObject(forKey: "pendingNotificationWords")
             }
@@ -105,7 +105,7 @@ struct HomeView: View {
                                 }
                             }.buttonStyle(.plain)
                             Text(word.meanings.first ?? "").font(.body).lineSpacing(5)
-                            Text("\(word.category) · 原资料第 \(word.sourcePages) 页").font(.caption).foregroundColor(.secondary)
+                            Text(word.isPersonal ? "\(word.category) · 手动添加" : "\(word.category) · 原资料第 \(word.sourcePages) 页").font(.caption).foregroundColor(.secondary)
                         }.padding(20).background(Color(.secondarySystemGroupedBackground)).cornerRadius(16)
                     }
                     Button { showReminderSetup = true } label: {

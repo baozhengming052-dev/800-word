@@ -14,6 +14,8 @@ struct SyncChange: Identifiable {
     @Published private(set) var status = "两台设备都打开此页面，再开始寻找。"
     @Published private(set) var preview: SyncMergePreview?
     @Published var choices: [String: SyncChoice] = [:]
+    @Published var contentChoices: [String: UUID] = [:]
+    @Published private(set) var proposalPreview: SyncMergePreview?
     @Published private(set) var changes: [SyncChange] = []
     @Published private(set) var needsApproval = false
     @Published private(set) var incomingCount = 0
@@ -22,6 +24,8 @@ struct SyncChange: Identifiable {
     private let dataManager: DataManager
     private var observation: AnyCancellable?
     private var readiness: AnyCancellable?
+    private var localChanges: AnyCancellable?
+    private var committing = false
     private var exchange: SyncExchange?
     private var baseline: StudySnapshot?
     private var proposal: StudySnapshot?
@@ -35,6 +39,11 @@ struct SyncChange: Identifiable {
             guard let self = self, !ready, self.exchange != nil, !self.finished else { return }
             self.interrupted("连接已断开，请重新开始。")
         }
+        localChanges = dataManager.$snapshotGeneration.dropFirst().sink { [weak self] _ in
+            guard let self = self, self.started, self.exchange != nil, !self.committing, self.baseline != nil, !self.finished else { return }
+            self.cancel()
+            self.status = "本机学习记录或个人内容已变化，旧同步方案已取消。请重新开始同步。"
+        }
         transport.onReady = { [weak self] in self?.connected() }
         transport.onData = { [weak self] data in self?.received(data) }
     }
@@ -42,7 +51,7 @@ struct SyncChange: Identifiable {
     func start() {
         stop()
         exchange = nil; baseline = nil; proposal = nil; proposalDigest = nil
-        preview = nil; choices = [:]; changes = []; needsApproval = false
+        preview = nil; choices = [:]; contentChoices = [:]; proposalPreview = nil; changes = []; needsApproval = false
         incomingCount = 0; finished = false; savedLocally = false; started = true
         status = "选择另一台设备；也可以在另一台上发起连接。"
         transport.start()
@@ -58,7 +67,18 @@ struct SyncChange: Identifiable {
         if !finished { status = savedLocally ? "本机已保存，对方可能未完成。重新同步即可补齐，不会重复计数。" : "同步已停止，已保存的学习记录不会被删除。" }
     }
     func backgrounded() { if started { stop() } }
-    var allConflictsChosen: Bool { preview?.conflicts.allSatisfy { choices[$0.id] != nil } ?? false }
+    var allConflictsChosen: Bool {
+        guard let preview = preview else { return false }
+        if !preview.contentConflicts.isEmpty { return preview.contentConflicts.allSatisfy { contentChoices[$0.id] != nil } }
+        return preview.conflicts.allSatisfy { choices[$0.id] != nil }
+    }
+    func resolveContent() {
+        do {
+            guard let preview = preview else { return }
+            self.preview = try dataManager.resolveContent(preview, choices: contentChoices)
+            contentChoices = [:]; choices = [:]
+        } catch { fail(error) }
+    }
 
     private func connected() {
         exchange = SyncExchange(initiator: transport.isInitiator)
@@ -87,16 +107,16 @@ struct SyncChange: Identifiable {
                 armTimeout(seconds: 600)
             case .snapshot:
                 let candidate = try dataManager.previewImport(packet.payload)
-                baseline = candidate.local; preview = candidate; choices = [:]
-                status = candidate.conflicts.isEmpty ? "请查看本次合并概况，再发送给对方确认。" : "两台设备有独立修改，请选择要保留的内容。"
+                baseline = candidate.local; preview = candidate; choices = [:]; contentChoices = [:]
+                status = candidate.conflicts.isEmpty && candidate.contentConflicts.isEmpty ? "请查看本次合并概况，再发送给对方确认。" : "两台设备有独立修改，请先核对词条和题目，再处理学习记录。"
                 armTimeout(seconds: 600)
             case .proposal:
                 guard let expected = baseline else { throw SyncError.invalid("缺少本机同步快照。") }
                 let proposed = try dataManager.validatedSnapshot(packet.payload)
-                let current = try dataManager.validatedSnapshot(dataManager.exportData())
-                try SyncMergeEngine.validateCommit(current: current, expected: expected, proposed: proposed)
+                try dataManager.validateProposal(proposed, expected: expected)
                 proposal = proposed; proposalDigest = Self.digest(packet.payload)
-                changes = changesBetween(expected, proposed)
+                proposalPreview = try dataManager.previewImport(packet.payload)
+                changes = try changesBetween(expected, proposed)
                 incomingCount = proposed.events.count - expected.events.count
                 needsApproval = true
                 status = "对方已确认合并方案。请检查本机变化，再确认保存。"
@@ -104,7 +124,7 @@ struct SyncChange: Identifiable {
             case .accepted:
                 guard let expected = baseline, let proposed = proposal,
                       let digest = proposalDigest, packet.digest == digest else { throw SyncError.invalid("对方确认的记录与本次方案不一致。") }
-                try dataManager.commitImport(proposed, expected: expected); savedLocally = true
+                try commit(proposed, expected: expected); savedLocally = true
                 let response = try run.complete(digest: digest); exchange = run; try send(response)
                 complete()
             case .completed:
@@ -120,8 +140,7 @@ struct SyncChange: Identifiable {
         do {
             guard let preview = preview, var run = exchange else { return }
             let proposed = try SyncMergeEngine.resolve(preview, choices: choices)
-            let current = try dataManager.validatedSnapshot(dataManager.exportData())
-            try SyncMergeEngine.validateCommit(current: current, expected: preview.local, proposed: proposed)
+            try dataManager.validateProposal(proposed, expected: preview.local)
             let data = try dataManager.encodedSnapshot(proposed)
             proposal = proposed; proposalDigest = Self.digest(data)
             let packet = try run.propose(data); exchange = run
@@ -134,7 +153,7 @@ struct SyncChange: Identifiable {
     func approveProposal() {
         do {
             guard let expected = baseline, let proposed = proposal, let digest = proposalDigest, var run = exchange else { return }
-            try dataManager.commitImport(proposed, expected: expected); savedLocally = true
+            try commit(proposed, expected: expected); savedLocally = true
             let packet = try run.accept(digest: digest); exchange = run
             needsApproval = false; try send(packet)
             status = "本机已保存，正在等待对方保存确认…"
@@ -148,6 +167,11 @@ struct SyncChange: Identifiable {
             if transport.isReady { try? send(packet) }
         }
         interrupted("已取消本次同步。")
+    }
+    private func commit(_ proposed: StudySnapshot, expected: StudySnapshot) throws {
+        committing = true
+        defer { committing = false }
+        try dataManager.commitImport(proposed, expected: expected)
     }
     private func send(_ packet: SyncPacket) throws {
         var identified = packet
@@ -180,10 +204,11 @@ struct SyncChange: Identifiable {
         }
     }
     private static func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
-    private func changesBetween(_ before: StudySnapshot, _ after: StudySnapshot) -> [SyncChange] {
-        let a = LearningEngine.reduce(words: dataManager.words, questions: dataManager.questions, events: before.events).records
-        let b = LearningEngine.reduce(words: dataManager.words, questions: dataManager.questions, events: after.events).records
-        return dataManager.words.compactMap { word in
+    private func changesBetween(_ before: StudySnapshot, _ after: StudySnapshot) throws -> [SyncChange] {
+        let beforeCatalog = try dataManager.catalog(for: before), afterCatalog = try dataManager.catalog(for: after)
+        let a = LearningEngine.reduce(words: beforeCatalog.words, questions: beforeCatalog.questions, events: before.events).records
+        let b = LearningEngine.reduce(words: afterCatalog.words, questions: afterCatalog.questions, events: after.events).records
+        return afterCatalog.words.compactMap { word in
             let left = a[word.id] ?? StudyRecord(), right = b[word.id] ?? StudyRecord()
             var details: [String] = []
             if left.errorCount != right.errorCount { details.append("错误次数：\(left.errorCount) → \(right.errorCount)") }

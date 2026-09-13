@@ -9,7 +9,7 @@ enum AdaptiveLayoutRules {
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
 
-enum WordEditorKind { case notes, errors, source }
+enum WordEditorKind { case notes, errors, source, personalWord, addQuestion }
 
 struct WordEditorRequest: Identifiable {
     let id = UUID()
@@ -36,6 +36,8 @@ struct WordEditorSheet: View {
         case .notes: NotesEditorView(word: request.word)
         case .errors: ErrorCountEditor(word: request.word)
         case .source: SourcePDFView(page: request.word.occurrences.first?.page ?? 1)
+        case .personalWord: PersonalWordEditor(wordID: request.word.id)
+        case .addQuestion: PersonalQuestionEditor(relatedWordIDs: [request.word.id])
         }
     }
 }
@@ -85,6 +87,9 @@ struct AdaptiveWordBrowser<Sidebar: View>: View {
             }
             .onChange(of: wide) { isWide in
                 compactDetailPresented = !isWide && selection != nil
+            }
+            .onChange(of: selection) { id in
+                if !wide { compactDetailPresented = id != nil }
             }
             .onChange(of: words.map(\.id)) { ids in
                 if let selected = selection, !ids.contains(selected) {

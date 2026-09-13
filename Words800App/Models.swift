@@ -14,6 +14,29 @@ struct Word: Identifiable, Codable, Hashable {
     let examples: [Example]
     let occurrences: [SourceOccurrence]
     let sourceDeleted: Bool
+    var isPersonal: Bool = false
+    init(id: UUID, word: String, pinyin: String, category: String, subcategory: String, section: String,
+         meanings: [String], keyPoints: String, confusableWords: [ConfusableWord], examples: [Example],
+         occurrences: [SourceOccurrence], sourceDeleted: Bool, isPersonal: Bool = false) {
+        self.id = id; self.word = word; self.pinyin = pinyin; self.category = category
+        self.subcategory = subcategory; self.section = section; self.meanings = meanings
+        self.keyPoints = keyPoints; self.confusableWords = confusableWords; self.examples = examples
+        self.occurrences = occurrences; self.sourceDeleted = sourceDeleted; self.isPersonal = isPersonal
+    }
+    private enum CodingKeys: String, CodingKey {
+        case id, word, pinyin, category, subcategory, section, meanings, keyPoints, confusableWords, examples, occurrences, sourceDeleted, isPersonal
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); word = try c.decode(String.self, forKey: .word)
+        pinyin = try c.decode(String.self, forKey: .pinyin); category = try c.decode(String.self, forKey: .category)
+        subcategory = try c.decode(String.self, forKey: .subcategory); section = try c.decode(String.self, forKey: .section)
+        meanings = try c.decode([String].self, forKey: .meanings); keyPoints = try c.decode(String.self, forKey: .keyPoints)
+        confusableWords = try c.decode([ConfusableWord].self, forKey: .confusableWords)
+        examples = try c.decode([Example].self, forKey: .examples); occurrences = try c.decode([SourceOccurrence].self, forKey: .occurrences)
+        sourceDeleted = try c.decode(Bool.self, forKey: .sourceDeleted)
+        isPersonal = try c.decodeIfPresent(Bool.self, forKey: .isPersonal) ?? false
+    }
     var sourcePages: String { Array(Set(occurrences.map { $0.page })).sorted().map(String.init).joined(separator: "、") }
 }
 struct SourceOccurrence: Codable, Hashable {
@@ -37,11 +60,35 @@ struct Question: Identifiable, Codable {
     let type: QuestionType
     let source: String
     let sourceURL: String
+    var personalEntryID: UUID? = nil
+    var relatedWordIDs: [UUID] = []
+    init(id: UUID, content: String, options: [String], correctAnswer: Int, explanation: String,
+         relatedWords: [String], type: QuestionType, source: String, sourceURL: String,
+         personalEntryID: UUID? = nil, relatedWordIDs: [UUID] = []) {
+        self.id = id; self.content = content; self.options = options; self.correctAnswer = correctAnswer
+        self.explanation = explanation; self.relatedWords = relatedWords; self.type = type
+        self.source = source; self.sourceURL = sourceURL; self.personalEntryID = personalEntryID
+        self.relatedWordIDs = relatedWordIDs
+    }
+    private enum CodingKeys: String, CodingKey {
+        case id, content, options, correctAnswer, explanation, relatedWords, type, source, sourceURL, personalEntryID, relatedWordIDs
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); content = try c.decode(String.self, forKey: .content)
+        options = try c.decode([String].self, forKey: .options); correctAnswer = try c.decode(Int.self, forKey: .correctAnswer)
+        explanation = try c.decode(String.self, forKey: .explanation); relatedWords = try c.decode([String].self, forKey: .relatedWords)
+        type = try c.decode(QuestionType.self, forKey: .type); source = try c.decode(String.self, forKey: .source)
+        sourceURL = try c.decode(String.self, forKey: .sourceURL)
+        personalEntryID = try c.decodeIfPresent(UUID.self, forKey: .personalEntryID)
+        relatedWordIDs = try c.decodeIfPresent([UUID].self, forKey: .relatedWordIDs) ?? []
+    }
 }
 enum QuestionType: String, Codable, CaseIterable {
     case realExam = "真题"
     case practice = "模拟题"
     case definition = "释义自测"
+    case manual = "手动录入"
 }
 struct Library: Codable { let schemaVersion: Int; let source: String; let words: [Word]; let questions: [Question] }
 enum MasteryLevel: String, Codable, CaseIterable {
@@ -65,7 +112,23 @@ struct StudyEvent: Identifiable, Codable, Equatable {
     }
     var date: Date { Date(timeIntervalSince1970: timestamp / 1000) }
 }
-struct StudySnapshot: Codable { var schemaVersion = 2; var events: [StudyEvent] = [] }
+struct StudySnapshot: Codable, Equatable {
+    var schemaVersion: Int
+    var events: [StudyEvent]
+    var revisions: [PersonalRevision]
+    init(schemaVersion: Int = 3, events: [StudyEvent] = [], revisions: [PersonalRevision] = []) {
+        self.schemaVersion = schemaVersion; self.events = events; self.revisions = revisions
+    }
+    private enum CodingKeys: String, CodingKey { case schemaVersion, events, revisions }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        events = try c.decode([StudyEvent].self, forKey: .events)
+        // Only a legacy snapshot may omit the directory. A truncated v3 is not empty data.
+        if schemaVersion == 2 { revisions = try c.decodeIfPresent([PersonalRevision].self, forKey: .revisions) ?? [] }
+        else { revisions = try c.decode([PersonalRevision].self, forKey: .revisions) }
+    }
+}
 struct StudyRecord {
     var errorCount = 0
     var isFavorite = false

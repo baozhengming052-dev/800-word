@@ -7,6 +7,7 @@ struct PracticeView: View {
     @State private var count = 10
     @State private var selectedQuestions: [Question] = []
     @State private var presenting = false
+    @State private var addingQuestion = false
     var body: some View {
         NavigationView {
             Form {
@@ -20,7 +21,7 @@ struct PracticeView: View {
                     Picker("题型", selection: $type) {
                         Text("全部题型").tag("全部题型")
                         ForEach(QuestionType.allCases, id: \.self) { item in
-                            Text("\(item.rawValue)（\(dataManager.questions.filter { $0.type == item }.count)）").tag(item.rawValue)
+                            Text("\(item.rawValue)（\(dataManager.activeQuestions.filter { $0.type == item }.count)）").tag(item.rawValue)
                         }
                     }
                     Picker("词语分类", selection: $category) {
@@ -36,7 +37,12 @@ struct PracticeView: View {
                     Button { start(errorsOnly: true) } label: { Label("错词专项训练", systemImage: "arrow.triangle.2.circlepath") }
                         .disabled(dataManager.errorWords.isEmpty)
                 }
+                Section("我的题目") {
+                    NavigationLink(destination: PersonalQuestionManager()) { Label("我的题目 · 编辑与归档", systemImage: "square.and.pencil") }
+                    Button { addingQuestion = true } label: { Label("添加题目", systemImage: "plus") }
+                }
                 Section("题库说明") {
+                    Text("手动录入的题目单独标注。归档题目或只关联已归档词条的题目不加入新练习。")
                     Text("模拟题是补充编写的逻辑填空练习；释义自测根据你的 PDF 生成，用于词义记忆。两类题分开标注。")
                     Text("真题注明具体考试和公开出处；回忆版与参考解析不等同于官方答案。")
                     Text("错词专项按错误次数优先选题。选定分类没有题目时会明确提示，可以切换到“释义自测”。")
@@ -45,6 +51,7 @@ struct PracticeView: View {
             .navigationTitle("刷题")
             .fullScreenCover(isPresented: $presenting) { PracticeSessionView(questions: selectedQuestions) }
         }.navigationViewStyle(.stack)
+        .sheet(isPresented: $addingQuestion) { PersonalQuestionEditor() }
     }
     private func start(errorsOnly: Bool) {
         selectedQuestions = dataManager.practiceQuestions(type: type, category: category, errorsOnly: errorsOnly, limit: count, includeArchived: errorsOnly)
@@ -79,7 +86,10 @@ struct PracticeSessionView: View {
                             ProgressView(value: Double(index), total: Double(max(1, questions.count)))
                             AdaptivePracticeColumns(wide: wide) {
                                 VStack(alignment: .leading, spacing: 16) {
-                                    Text(question.source).font(.caption).foregroundColor(AppStyle.accent)
+                                    // User-written source notes may reveal the answer; show them only after submission.
+                                    if question.personalEntryID == nil || submitted {
+                                        Text(question.source).font(.caption).foregroundColor(AppStyle.accent)
+                                    }
                                     Text(question.content)
                                         .font(wide ? .title2 : .title3).lineSpacing(8)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -174,9 +184,9 @@ struct ExplanationBody: View {
                 Link("查看公开出处（需浏览器联网）", destination: url).font(.caption)
             }
             Text("相关词条").font(.headline)
-            ForEach(question.relatedWords, id: \.self) { name in
-                if let word = dataManager.words.first(where: { $0.word == name }) {
-                    NavigationLink(destination: WordDetailView(word: word)) { Label(name, systemImage: "book") }
+            ForEach(dataManager.relatedWordIDs(for: question), id: \.self) { id in
+                if let word = dataManager.words.first(where: { $0.id == id }) {
+                    NavigationLink(destination: WordDetailView(word: word)) { Label(word.word, systemImage: "book") }
                 }
             }
         }.padding(18).background(Color(.secondarySystemGroupedBackground)).cornerRadius(16)

@@ -15,7 +15,7 @@ struct NearbySyncView: View {
                     .font(.headline).foregroundColor(AppStyle.accent)
                 Text("无需账号或互联网。两台都打开本页面并开启 Wi-Fi、蓝牙；首次允许“本地网络”。同一 Wi-Fi 下更容易发现，路由器无需连接互联网。")
                     .font(.footnote).foregroundColor(.secondary)
-                Text("离开页面或切到后台会停止同步。收藏、笔记、答题和学习记录会合并；提醒时间、每日目标和未完成练习进度各自保留。")
+                Text("两台 App 都需升级到支持 v3 内容的版本。离开页面或切到后台会停止同步。手动词条、题目、收藏、笔记、答题和学习记录会合并；提醒时间、每日目标和未完成练习进度各自保留。")
                     .font(.footnote).foregroundColor(.secondary)
             }
             Section("连接状态") {
@@ -65,13 +65,27 @@ struct NearbySyncView: View {
                     Text("新增条数是学习操作数量，不是词数；重复记录不会再次计入。")
                         .font(.footnote).foregroundColor(.secondary)
                 }
-                SyncConflictSections(conflicts: preview.conflicts, choices: $model.choices, incomingLabel: "对方")
+                SyncContentSummaryView(summary: preview.contentChanges)
+                if !preview.contentConflicts.isEmpty {
+                    SyncContentConflictSections(preview: preview, choices: $model.contentChoices)
+                } else {
+                    SyncContentChangesView(preview: preview)
+                    SyncConflictSections(conflicts: preview.conflicts, choices: $model.choices, incomingLabel: "对方")
+                }
                 Section {
-                    Button("发送合并方案，等待对方确认") { model.confirmMerge() }.disabled(!model.allConflictsChosen)
+                    if !preview.contentConflicts.isEmpty {
+                        Button("确认内容选择，继续核对") { model.resolveContent() }.disabled(!model.allConflictsChosen)
+                    } else {
+                        Button("发送合并方案，等待对方确认") { model.confirmMerge() }.disabled(!model.allConflictsChosen)
+                    }
                     Button("取消此次同步", role: .destructive) { model.cancel() }
                 }
             }
             if model.needsApproval {
+                if let preview = model.proposalPreview {
+                    SyncContentSummaryView(summary: preview.contentChanges, showOutgoing: false)
+                    SyncContentChangesView(preview: preview)
+                }
                 Section("保存前确认") {
                     Text("本机将新增 \(model.incomingCount) 条记录，原有历史全部保留。")
                     Text("下面列出笔记、错误次数、收藏和掌握程度的变化。答题记录按条合并，复习安排由合并后的学习记录重新计算。")
@@ -134,9 +148,13 @@ struct SyncConflictSections: View {
 struct BackupMergeView: View {
     @EnvironmentObject private var dataManager: DataManager
     @Environment(\.dismiss) private var dismiss
-    let preview: SyncMergePreview
+    @State private var preview: SyncMergePreview
     @State private var choices: [String: SyncChoice] = [:]
+    @State private var contentChoices: [String: UUID] = [:]
     @State private var errorMessage = ""
+    @State private var stale = false
+    @State private var completed = false
+    init(preview: SyncMergePreview) { _preview = State(initialValue: preview) }
     var body: some View {
         NavigationView {
             List {
@@ -145,20 +163,134 @@ struct BackupMergeView: View {
                     Text("收藏、掌握程度和复习安排按事件时间合并。遇到双方修改的笔记和手动次数，需先选择最终内容。")
                         .font(.footnote).foregroundColor(.secondary)
                 }
-                SyncConflictSections(conflicts: preview.conflicts, choices: $choices, incomingLabel: "备份")
+                SyncContentSummaryView(summary: preview.contentChanges, otherLabel: "相对备份")
+                if !preview.contentConflicts.isEmpty {
+                    SyncContentConflictSections(preview: preview, choices: $contentChoices)
+                } else {
+                    SyncContentChangesView(preview: preview)
+                    SyncConflictSections(conflicts: preview.conflicts, choices: $choices, incomingLabel: "备份")
+                }
                 if !errorMessage.isEmpty { Section { Text(errorMessage).foregroundColor(.red) } }
                 Section {
-                    Button("确认导入并保存") {
+                    if !preview.contentConflicts.isEmpty {
+                        Button("确认内容选择，继续核对") {
+                            do {
+                                preview = try dataManager.resolveContent(preview, choices: contentChoices)
+                                contentChoices = [:]; choices = [:]; errorMessage = ""
+                            } catch { errorMessage = error.localizedDescription }
+                        }.disabled(stale || !preview.contentConflicts.allSatisfy { contentChoices[$0.id] != nil })
+                    } else { Button("确认合并并保存") {
+                        guard !completed, !stale else { return }
                         do {
                             let result = try SyncMergeEngine.resolve(preview, choices: choices)
                             try dataManager.commitImport(result, expected: preview.local)
+                            completed = true
                             dismiss(); dataManager.message = "备份已合并，原有学习记录和历史已保留。"
                         } catch { errorMessage = error.localizedDescription }
-                    }.disabled(!preview.conflicts.allSatisfy { choices[$0.id] != nil })
+                    }.disabled(stale || completed || !preview.conflicts.allSatisfy { choices[$0.id] != nil }) }
                 }
             }
             .navigationTitle("合并学习备份").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
         }.navigationViewStyle(.stack)
+        .onChange(of: dataManager.snapshotGeneration) { _ in
+            if !completed {
+                stale = true
+                errorMessage = "本机内容或学习记录已变化，这份预览不能再保存。请取消后重新导入或重新打开本机冲突处理。"
+            }
+        }
+    }
+}
+
+struct SyncContentSummaryView: View {
+    let summary: SyncContentChangeSummary
+    var showOutgoing = true
+    var otherLabel = "对方"
+    var body: some View {
+        Section("个人内容变化") {
+            Text("本机：" + describe(summary.incoming))
+            if showOutgoing { Text(otherLabel + "：" + describe(summary.outgoing)) }
+            Text("按当前词条和题目计数，编辑包含恢复。历史版本与学习操作另外保留，不按版本数重复计词。")
+                .font(.footnote).foregroundColor(.secondary)
+        }
+    }
+    private func describe(_ value: SyncContentChangeCounts) -> String {
+        "词条新增 \(value.addedWords)、编辑 \(value.editedWords)、归档 \(value.archivedWords)；题目新增 \(value.addedQuestions)、编辑 \(value.editedQuestions)、归档 \(value.archivedQuestions)"
+    }
+}
+
+struct SyncContentConflictSections: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let preview: SyncMergePreview
+    @Binding var choices: [String: UUID]
+    private var names: [UUID: String] {
+        guard let catalog = try? dataManager.catalog(for: preview.merged) else { return [:] }
+        return Dictionary(uniqueKeysWithValues: catalog.words.map { ($0.id, $0.word) })
+    }
+    var body: some View {
+        ForEach(preview.contentConflicts) { conflict in
+            Section(conflict.kind == .revision ? "同一条目的不同版本" : "同名词条：\(conflict.normalizedName ?? "")") {
+                Text(conflict.kind == .revision ? "选择要保留的内容和归档状态。各版本历史会保留。" : "选择继续使用的词条，其余个人同名词将归档。原资料词条不可改写或归档。")
+                    .font(.footnote).foregroundColor(.secondary)
+                ForEach(conflict.options) { option in
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let revision = option.revision {
+                            Text("版本：\(revision.id.uuidString)").font(.caption2).foregroundColor(.secondary)
+                            PersonalPayloadView(word: revision.word, question: revision.question, archived: revision.archived, wordNames: names)
+                        }
+                        if let word = option.builtInWord {
+                            Text("原资料词条：\(word.word)").font(.headline)
+                            Text(word.meanings.joined(separator: "\n"))
+                            Text("\(word.category) · 第 \(word.sourcePages) 页").font(.caption).foregroundColor(.secondary)
+                        }
+                        Button {
+                            choices[conflict.id] = option.id
+                        } label: {
+                            Label(choices[conflict.id] == option.id ? "已选择这个版本 / 词条" : "保留这个版本 / 词条",
+                                systemImage: choices[conflict.id] == option.id ? "checkmark.circle.fill" : "circle")
+                        }.disabled(!option.isSelectable)
+                        if !option.isSelectable { Text("已有原资料词条，个人同名词必须归档。").font(.caption).foregroundColor(.secondary) }
+                        Divider()
+                    }.padding(.vertical, 6)
+                }
+            }
+        }
+    }
+}
+
+struct SyncContentChangesView: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let preview: SyncMergePreview
+    var body: some View {
+        if let before = try? dataManager.catalog(for: preview.local),
+           let incoming = try? dataManager.catalog(for: preview.incoming),
+           let after = try? dataManager.catalog(for: preview.merged) {
+            let changed = after.headsByEntryID.keys.filter {
+                Set((before.headsByEntryID[$0] ?? []).map(\.id)) != Set((after.headsByEntryID[$0] ?? []).map(\.id))
+                    || Set((incoming.headsByEntryID[$0] ?? []).map(\.id)) != Set((after.headsByEntryID[$0] ?? []).map(\.id))
+            }.sorted { $0.uuidString < $1.uuidString }
+            let names = Dictionary(uniqueKeysWithValues: after.words.map { ($0.id, $0.word) })
+            ForEach(changed, id: \.self) { entryID in
+                Section("\(names[entryID] ?? "手动题目") · 合并后的内容") {
+                    ForEach(after.headsByEntryID[entryID] ?? []) { revision in
+                        PersonalPayloadView(word: revision.word, question: revision.question, archived: revision.archived, wordNames: names)
+                    }
+                    if let old = before.headsByEntryID[entryID], !old.isEmpty {
+                        DisclosureGroup("查看本机合并前的内容") {
+                            ForEach(old) { revision in
+                                PersonalPayloadView(word: revision.word, question: revision.question, archived: revision.archived, wordNames: names)
+                            }
+                        }
+                    }
+                    if let old = incoming.headsByEntryID[entryID], !old.isEmpty {
+                        DisclosureGroup("查看传入内容") {
+                            ForEach(old) { revision in
+                                PersonalPayloadView(word: revision.word, question: revision.question, archived: revision.archived, wordNames: names)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

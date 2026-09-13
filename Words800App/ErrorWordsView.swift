@@ -20,9 +20,9 @@ struct ErrorWordsView: View {
                         Button { cards = true } label: { Label("词卡巩固", systemImage: "rectangle.on.rectangle") }.disabled(words.isEmpty)
                         Spacer()
                         Button {
-                            let visible = Set(words.map { $0.word })
-                            selectedQuestions = Array(dataManager.practiceQuestions(type: "全部题型", category: "全部分类", errorsOnly: true, limit: dataManager.questions.count, includeArchived: true)
-                                .filter { $0.relatedWords.contains(where: visible.contains) }.prefix(20))
+                            let visible = Set(words.map { $0.id })
+                            selectedQuestions = Array(dataManager.practiceQuestions(type: "全部题型", category: "全部分类", errorsOnly: true, limit: dataManager.activeQuestions.count, includeArchived: true)
+                                .filter { dataManager.relatedWordIDs(for: $0).contains(where: visible.contains) }.prefix(20))
                             if selectedQuestions.isEmpty { dataManager.message = "暂时没有关联题目，请先用词卡巩固。" } else { practice = true }
                         } label: { Label("专项刷题", systemImage: "pencil") }.disabled(words.isEmpty)
                     }.buttonStyle(.borderless)

@@ -67,6 +67,15 @@ import Foundation
         let spoof = StudyEvent(id: shared.id, kind: "answer", value: "999", timestamp: shared.timestamp, questionID: shared.questionID)
         rejects("A reused event ID cannot rewrite history") { _ = try plan([shared], [spoof]) }
         rejects("Duplicate input IDs must be rejected") { _ = try plan([shared, shared], []) }
+        let unicodeNote = event("note", "caf\u{00E9}", 50)
+        let normalizedNote = StudyEvent(id: unicodeNote.id, wordID: word.id, kind: "note", value: "cafe\u{0301}", timestamp: unicodeNote.timestamp)
+        assert(Array(unicodeNote.value.utf8) != Array(normalizedNote.value.utf8), "Fixture differs in raw payload bytes")
+        rejects("Canonical Unicode equivalence cannot permit event ID reuse") { _ = try plan([unicodeNote], [normalizedNote]) }
+        rejects("Canonical Unicode equivalence cannot permit event replacement at commit") {
+            try SyncMergeEngine.validateCommit(current: StudySnapshot(events: [unicodeNote]), expected: StudySnapshot(events: [unicodeNote]), proposed: StudySnapshot(events: [normalizedNote]))
+        }
+        let unicodeUnion = try plan([unicodeNote, shared], [shared, unicodeNote])
+        assert(Array(unicodeUnion.merged.events.first { $0.id == unicodeNote.id }!.value.utf8) == [0x63, 0x61, 0x66, 0xC3, 0xA9], "Unchanged event bytes survive differently ordered arrays")
         rejects("A stale confirmation cannot overwrite new local work") {
             try SyncMergeEngine.validateCommit(current: StudySnapshot(events: [shared, a]), expected: StudySnapshot(events: [shared]), proposed: StudySnapshot(events: [shared, b]))
         }
@@ -75,7 +84,7 @@ import Foundation
         }
         try SyncMergeEngine.validateCommit(current: StudySnapshot(events: [a, shared]), expected: StudySnapshot(events: [shared, a]), proposed: independent.merged)
         let restored = try JSONDecoder().decode(StudySnapshot.self, from: JSONEncoder().encode(zero))
-        assert(restored.schemaVersion == 2 && restored.events == zero.events, "Existing backups stay compatible")
+        assert(restored.schemaVersion == 3 && restored.events == zero.events, "Merged backups use schema 3 without changing learning history")
         print("PASS: sync union, conflict resolution, idempotency, stale and destructive proposal checks")
     }
 }

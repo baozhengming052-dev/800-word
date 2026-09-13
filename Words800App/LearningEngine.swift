@@ -2,17 +2,34 @@ import Foundation
 
 // Deterministic learning rules shared by the app and the standalone macOS tests.
 enum LearningEngine {
+    private static func builtInNameLookup(words: [Word]) -> [String: UUID] {
+        var result: [String: UUID] = [:]
+        for word in words where !word.isPersonal {
+            // A duplicated bundled spelling resolves deterministically, without trapping.
+            if let previous = result[word.word], previous.uuidString < word.id.uuidString { continue }
+            result[word.word] = word.id
+        }
+        return result
+    }
+    private static func relatedWordIDs(for question: Question, builtInNames: [String: UUID]) -> [UUID] {
+        let ids = question.personalEntryID == nil ? question.relatedWords.compactMap { builtInNames[$0] } : question.relatedWordIDs
+        var seen = Set<UUID>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+    static func relatedWordIDs(for question: Question, words: [Word]) -> [UUID] {
+        relatedWordIDs(for: question, builtInNames: question.personalEntryID == nil ? builtInNameLookup(words: words) : [:])
+    }
     static func reduce(words: [Word], questions: [Question], events: [StudyEvent]) -> (records: [UUID: StudyRecord], answers: [QuestionRecord]) {
         let questionsByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
+        let byName = builtInNameLookup(words: words)
+        let linksByQuestionID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, relatedWordIDs(for: $0, builtInNames: byName)) })
         var records: [UUID: StudyRecord] = [:], answers: [QuestionRecord] = []
         let ordered = events.sorted { $0.timestamp == $1.timestamp ? $0.id.uuidString < $1.id.uuidString : $0.timestamp < $1.timestamp }
-        let byName = Dictionary(uniqueKeysWithValues: words.map { ($0.word, $0.id) })
         for e in ordered {
             if e.kind == "answer", let id = e.questionID, let q = questionsByID[id], let answer = Int(e.value) {
                 let correct = answer == q.correctAnswer
                 answers.append(QuestionRecord(id: e.id, questionId: id, isCorrect: correct, selectedAnswer: answer, answeredAt: e.date))
-                for name in q.relatedWords {
-                    guard let wid = byName[name] else { continue }
+                for wid in linksByQuestionID[id] ?? [] {
                     var r = records[wid] ?? StudyRecord()
                     if !correct {
                         r.errorCount += 1; r.errorHistory.append(e); r.lastErrorDate = e.date

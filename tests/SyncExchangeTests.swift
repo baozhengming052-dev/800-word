@@ -8,7 +8,7 @@ import Foundation
         var sender = SyncExchange(initiator: true), receiver = SyncExchange(initiator: false)
         let request = try sender.begin()
         try receiver.receive(request)
-        let backup = Data("{\"schemaVersion\":2,\"events\":[]}".utf8)
+        let backup = Data("{\"schemaVersion\":3,\"events\":[],\"revisions\":[]}".utf8)
         let snapshot = try receiver.snapshot(backup)
         let decoded = try SyncPacket.decode(snapshot.encode())
         assert(decoded.payload == backup && decoded.id == request.id, "Binary envelope preserves exact bytes and run ID")
@@ -39,6 +39,28 @@ import Foundation
         matchingLibrary.libraryFingerprint = String(repeating: "b", count: 64)
         let matchingDecoded = try SyncPacket.decode(matchingLibrary.encode())
         try matchingDecoded.validateLibrary(String(repeating: "b", count: 64))
+        func envelope(_ version: Int, _ schema: Int?) throws -> Data {
+            var header: [String: Any] = ["version": version, "id": newRun.id.uuidString, "kind": "request"]
+            if let schema = schema { header["contentSchemaVersion"] = schema }
+            let bytes = try JSONSerialization.data(withJSONObject: header)
+            let n = UInt32(bytes.count)
+            var packet = Data([UInt8((n >> 24) & 255), UInt8((n >> 16) & 255), UInt8((n >> 8) & 255), UInt8(n & 255)])
+            packet.append(bytes); return packet
+        }
+        for (version, schema) in [(1, nil as Int?), (2, nil), (2, 2)] {
+            do {
+                _ = try SyncPacket.decode(envelope(version, schema))
+                fatalError("Old or missing content capability must fail before exchange")
+            } catch {
+                assert(error.localizedDescription.contains("更新"), "Incompatible peers receive actionable upgrade guidance")
+            }
+        }
+        let personal = PersonalRevision(entryID: UUID(), word: PersonalWordContent(word: "自建", meaning: "释义"))
+        let personalBytes = try JSONEncoder().encode(StudySnapshot(revisions: [personal]))
+        let differentPersonal = SyncPacket(id: newRun.id, kind: .snapshot, payload: personalBytes, libraryFingerprint: String(repeating: "b", count: 64))
+        let personalDecoded = try SyncPacket.decode(differentPersonal.encode())
+        try personalDecoded.validateLibrary(String(repeating: "b", count: 64))
+        assert(personalDecoded.payload == personalBytes, "Personal content differences do not change bundled compatibility")
         rejects("Different library contents must not produce diverging records") {
             try matchingDecoded.validateLibrary(String(repeating: "c", count: 64))
         }

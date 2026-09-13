@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		000000000000000A10000056 /* PersonalTransactions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000057 /* PersonalTransactions.swift */; };
+		000000000000000A10000058 /* PersonalContentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000059 /* PersonalContentViews.swift */; };
+		000000000000000A10000050 /* PersonalLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000051 /* PersonalLibrary.swift */; };
+		000000000000000A10000052 /* SnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000053 /* SnapshotCodec.swift */; };
+		000000000000000A10000054 /* SnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000055 /* SnapshotStore.swift */; };
 		000000000000000A10000040 /* AdaptiveLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000041 /* AdaptiveLayout.swift */; };
 		000000000000000A10000042 /* SyncMergeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000043 /* SyncMergeEngine.swift */; };
 		000000000000000A10000044 /* SyncExchange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000A10000045 /* SyncExchange.swift */; };
@@ -29,6 +34,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		000000000000000A10000057 /* PersonalTransactions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalTransactions.swift; sourceTree = "<group>"; };
+		000000000000000A10000059 /* PersonalContentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalContentViews.swift; sourceTree = "<group>"; };
+		000000000000000A10000051 /* PersonalLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalLibrary.swift; sourceTree = "<group>"; };
+		000000000000000A10000053 /* SnapshotCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotCodec.swift; sourceTree = "<group>"; };
+		000000000000000A10000055 /* SnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStore.swift; sourceTree = "<group>"; };
 		000000000000000A10000041 /* AdaptiveLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveLayout.swift; sourceTree = "<group>"; };
 		000000000000000A10000043 /* SyncMergeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMergeEngine.swift; sourceTree = "<group>"; };
 		000000000000000A10000045 /* SyncExchange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncExchange.swift; sourceTree = "<group>"; };
@@ -79,6 +89,11 @@
 				000000000000000A10000001 /* Words800App.swift */,
 				000000000000000A10000002 /* ContentView.swift */,
 				000000000000000A10000004 /* Models.swift */,
+				000000000000000A10000051 /* PersonalLibrary.swift */,
+				000000000000000A10000053 /* SnapshotCodec.swift */,
+				000000000000000A10000055 /* SnapshotStore.swift */,
+				000000000000000A10000057 /* PersonalTransactions.swift */,
+				000000000000000A10000059 /* PersonalContentViews.swift */,
 				000000000000000A10000005 /* DataManager.swift */,
 				000000000000000A10000033 /* LearningEngine.swift */,
 				000000000000000A10000041 /* AdaptiveLayout.swift */,
@@ -189,6 +204,11 @@
 				000000000000000A10000011 /* Words800App.swift in Sources */,
 				000000000000000A10000012 /* ContentView.swift in Sources */,
 				000000000000000A10000014 /* Models.swift in Sources */,
+				000000000000000A10000050 /* PersonalLibrary.swift in Sources */,
+				000000000000000A10000052 /* SnapshotCodec.swift in Sources */,
+				000000000000000A10000054 /* SnapshotStore.swift in Sources */,
+				000000000000000A10000056 /* PersonalTransactions.swift in Sources */,
+				000000000000000A10000058 /* PersonalContentViews.swift in Sources */,
 				000000000000000A10000015 /* DataManager.swift in Sources */,
 				000000000000000A10000032 /* LearningEngine.swift in Sources */,
 				000000000000000A10000040 /* AdaptiveLayout.swift in Sources */,
