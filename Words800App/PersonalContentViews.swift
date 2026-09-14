@@ -14,6 +14,7 @@ struct PersonalWordEditor: View {
     @State private var loaded = false
     @State private var completed = false
     @State private var errorMessage = ""
+    @State private var showErrorAlert = false
     @State private var confirmDiscard = false
     @State private var pendingExistingID: UUID?
 
@@ -23,6 +24,14 @@ struct PersonalWordEditor: View {
     }
     private var dirty: Bool { content != original || !notes.isEmpty }
     private var matches: [Word] { dataManager.matchingWords(content.word, excluding: entryID) }
+    private var errorAlertTitle: String {
+        errorMessage.hasPrefix("已有同名词条") ? "已有同名词条" : "无法保存词条"
+    }
+    private var errorAlertMessage: String {
+        errorMessage.hasPrefix("已有同名词条")
+            ? "请打开已有词条添加笔记或题目；如需新建，请修改词语后重新保存。"
+            : errorMessage
+    }
     var body: some View {
         NavigationView {
             Form {
@@ -59,7 +68,6 @@ struct PersonalWordEditor: View {
                         Text("\(notes.utf8.count) / 100,000 字节").font(.caption2).foregroundColor(.secondary)
                     }
                 }
-                if !errorMessage.isEmpty { Section { Text(errorMessage).foregroundColor(.red).textSelection(.enabled) } }
                 Section {
                     Text("只保存手动录入的内容，不修改原 PDF。归档词条的编辑仍保留归档状态；恢复时会检查同名词。")
                         .font(.footnote).foregroundColor(.secondary)
@@ -80,6 +88,11 @@ struct PersonalWordEditor: View {
                 }
                 Button("继续编辑", role: .cancel) { pendingExistingID = nil }
             }
+            .alert(errorAlertTitle, isPresented: $showErrorAlert) {
+                Button("继续编辑", role: .cancel) { }
+            } message: {
+                Text(errorAlertMessage)
+            }
         }
         .navigationViewStyle(.stack).tint(AppStyle.accent)
         .interactiveDismissDisabled(dirty && !completed)
@@ -88,7 +101,7 @@ struct PersonalWordEditor: View {
         guard !loaded else { return }; loaded = true
         if editing {
             guard let revision = dataManager.currentRevision(for: entryID), let word = revision.word else {
-                errorMessage = "词条已不可用，请取消后重新打开。"; completed = true; return
+                presentError("词条已不可用，请取消后重新打开。"); completed = true; return
             }
             content = word; original = word
             expectedHeads = dataManager.expectedHeads(for: entryID)
@@ -100,7 +113,11 @@ struct PersonalWordEditor: View {
             try dataManager.savePersonalWord(content: content, wordID: entryID, expectedHeads: expectedHeads,
                 notes: editing || notes.isEmpty ? nil : notes)
             completed = true; onSaved(entryID); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { presentError(error.localizedDescription) }
+    }
+    private func presentError(_ message: String) {
+        errorMessage = message
+        showErrorAlert = true
     }
     private func useExisting(_ id: UUID) {
         guard !completed, let use = onUseExisting else { return }

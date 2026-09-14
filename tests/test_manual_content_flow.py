@@ -25,6 +25,16 @@ class ManualContentFlowTests(unittest.TestCase):
     def test_word_detail_keeps_manual_question_entry(self):
         self.assertIn('Label("给这个词添加题目", systemImage: "plus.square")', self.library_view)
 
+    def test_word_editor_shows_every_save_or_validation_error_in_an_immediate_alert(self):
+        word_editor = self.editors.split("struct PersonalQuestionEditor", maxsplit=1)[0]
+        self.assertIn("@State private var showErrorAlert = false", word_editor)
+        self.assertIn(".alert(errorAlertTitle, isPresented: $showErrorAlert)", word_editor)
+        self.assertIn('errorMessage.hasPrefix("已有同名词条") ? "已有同名词条"', word_editor)
+        self.assertIn("private func presentError(_ message: String)", word_editor)
+        self.assertIn("catch { presentError(error.localizedDescription) }", word_editor)
+        self.assertIn('presentError("词条已不可用，请取消后重新打开。")', word_editor)
+        self.assertNotIn('if !errorMessage.isEmpty { Section { Text(errorMessage)', word_editor)
+
 
 if __name__ == "__main__":
     unittest.main()
