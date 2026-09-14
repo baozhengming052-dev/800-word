@@ -66,10 +66,14 @@ enum PersonalTransactions {
     }
 
     static func practiceQuestions(catalog: PersonalCatalog) -> [Question] {
+        let context = LearningEngine.Context(words: catalog.words, questions: catalog.questions)
+        return practiceQuestions(catalog: catalog, context: context)
+    }
+
+    static func practiceQuestions(catalog: PersonalCatalog, context: LearningEngine.Context) -> [Question] {
         let activeIDs = Set(catalog.words.filter { !catalog.archivedWordIDs.contains($0.id) }.map(\.id))
-        let builtInWords = catalog.words.filter { !$0.isPersonal }
         return catalog.activeQuestions.filter {
-            LearningEngine.relatedWordIDs(for: $0, words: $0.personalEntryID == nil ? builtInWords : []).contains(where: activeIDs.contains)
+            context.relatedWordIDs(for: $0).contains(where: activeIDs.contains)
         }
     }
 }

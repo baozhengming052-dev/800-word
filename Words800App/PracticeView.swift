@@ -107,7 +107,7 @@ struct PracticeSessionView: View {
                                                 .background(optionColor(option, question).opacity(selected == option || submitted ? 0.09 : 0.04))
                                                 .cornerRadius(14)
                                                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected == option ? optionColor(option, question) : .clear, lineWidth: 1.5))
-                                        }.buttonStyle(.plain).disabled(submitted)
+                                        }.buttonStyle(ResponsivePressButtonStyle()).disabled(submitted)
                                     }
                                     // No explanation, related-word links, or correct-answer styling before submission.
                                     if submitted { ExplanationBody(question: question, selectedAnswer: selected) }
@@ -185,7 +185,7 @@ struct ExplanationBody: View {
             }
             Text("相关词条").font(.headline)
             ForEach(dataManager.relatedWordIDs(for: question), id: \.self) { id in
-                if let word = dataManager.words.first(where: { $0.id == id }) {
+                if let word = dataManager.word(for: id) {
                     NavigationLink(destination: WordDetailView(word: word)) { Label(word.word, systemImage: "book") }
                 }
             }

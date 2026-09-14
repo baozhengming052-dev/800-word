@@ -13,9 +13,18 @@ enum SnapshotStoreError: LocalizedError {
 /// Synchronous persistence boundary. Callers publish a proposed snapshot only after save succeeds.
 final class SnapshotStore {
     private struct Header: Decodable { let schemaVersion: Int }
+    private struct FileStamp: Equatable {
+        let size: Int64
+        let modified: Date?
+    }
     private let directory: URL
     private let validate: (Data) throws -> StudySnapshot
     private let files = FileManager.default
+    private let encoder = JSONEncoder()
+    private var cachedPrimary: Data?
+    private var primaryStamp: FileStamp?
+    private var previousStamp: FileStamp?
+    private var incrementalReady = false
     private(set) var recoveryMessage: String?
     init(directory: URL, validate: @escaping (Data) throws -> StudySnapshot) {
         self.directory = directory; self.validate = validate
@@ -23,6 +32,18 @@ final class SnapshotStore {
     private var primary: URL { directory.appendingPathComponent("study-v3.json") }
     private var previous: URL { directory.appendingPathComponent("study-v3.previous.json") }
     private func exists(_ url: URL) -> Bool { files.fileExists(atPath: url.path) }
+    private func stamp(_ url: URL) throws -> FileStamp? {
+        guard exists(url) else { return nil }
+        let attributes = try files.attributesOfItem(atPath: url.path)
+        guard let size = attributes[.size] as? NSNumber else { return nil }
+        return FileStamp(size: size.int64Value, modified: attributes[.modificationDate] as? Date)
+    }
+    private func updateCache(afterWriting data: Data) {
+        cachedPrimary = data
+        primaryStamp = try? stamp(primary)
+        previousStamp = try? stamp(previous)
+        incrementalReady = primaryStamp != nil && (!exists(previous) || previousStamp != nil)
+    }
     private func read(_ url: URL, version: Int) throws -> (Data, StudySnapshot) {
         let attributes = try files.attributesOfItem(atPath: url.path)
         guard let size = attributes[.size] as? NSNumber, size.int64Value <= Int64(SnapshotCodec.maximumBytes) else {
@@ -44,9 +65,22 @@ final class SnapshotStore {
     func load() throws -> StudySnapshot? {
         recoveryMessage = nil
         if exists(primary) || exists(previous) {
-            if let valid = try recoverableRead(primary, version: 3) { return valid.1 }
+            if let valid = try recoverableRead(primary, version: 3) {
+                cachedPrimary = valid.0
+                primaryStamp = try stamp(primary)
+                previousStamp = try stamp(previous)
+                // Pay the previous-file check once at launch, not on the user's first study tap.
+                var previousIsSafe = !exists(previous)
+                if exists(previous) {
+                    do { _ = try recoverableRead(previous, version: 3); previousIsSafe = true }
+                    catch { previousIsSafe = false }
+                }
+                incrementalReady = primaryStamp != nil && previousIsSafe && (!exists(previous) || previousStamp != nil)
+                return valid.1
+            }
             if let valid = try recoverableRead(previous, version: 3) {
                 recoveryMessage = "主记录损坏或缺失，已载入上一份有效 v3 记录。损坏文件已保留。"
+                cachedPrimary = nil; incrementalReady = false
                 return valid.1
             }
             throw PersonalLibraryError.invalid("v3 记录及上一份备份均无法读取，已保留原文件，未回退到旧版记录。")
@@ -64,7 +98,7 @@ final class SnapshotStore {
     }
     func save(_ snapshot: StudySnapshot) throws {
         guard snapshot.schemaVersion == 3 else { throw PersonalLibraryError.invalid("仅可保存 v3 记录。") }
-        let data = try JSONEncoder().encode(snapshot)
+        let data = try encoder.encode(snapshot)
         guard data.count <= SnapshotCodec.maximumBytes else { throw PersonalLibraryError.invalid("备份文件过大。") }
         _ = try validate(data)
         // Preflight both destinations before any directory, backup or evidence-file mutation.
@@ -83,5 +117,26 @@ final class SnapshotStore {
             }
         }
         try data.write(to: primary, options: .atomic)
+        updateCache(afterWriting: data)
+    }
+
+    /// Fast path for a proposal checked by the caller whose current primary was validated in this process.
+    /// Unexpected on-disk changes fall back to the full recovery/validation path above.
+    func saveValidated(_ snapshot: StudySnapshot) throws {
+        let diskPrimaryStamp = try? stamp(primary)
+        let diskPreviousStamp = try? stamp(previous)
+        guard incrementalReady, let oldPrimary = cachedPrimary, exists(primary),
+              exists(previous) == (previousStamp != nil),
+              diskPrimaryStamp == primaryStamp, diskPreviousStamp == previousStamp else {
+            try save(snapshot)
+            return
+        }
+        guard snapshot.schemaVersion == 3 else { throw PersonalLibraryError.invalid("仅可保存 v3 记录。") }
+        let data = try encoder.encode(snapshot)
+        guard data.count <= SnapshotCodec.maximumBytes else { throw PersonalLibraryError.invalid("备份文件过大。") }
+        try files.createDirectory(at: directory, withIntermediateDirectories: true)
+        try oldPrimary.write(to: previous, options: .atomic)
+        try data.write(to: primary, options: .atomic)
+        updateCache(afterWriting: data)
     }
 }

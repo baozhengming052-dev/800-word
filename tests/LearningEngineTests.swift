@@ -49,6 +49,21 @@ import Foundation
         assert(historical.records[ownWord.entryID]?.errorCount == 1 && historical.records[otherWord.entryID] == nil, "Old answers retain the original UUID association")
         let builtInAnswer = LearningEngine.reduce(words: catalog.words, questions: catalog.questions, events: [wrong])
         assert(builtInAnswer.records[word.id]?.errorCount == 1 && builtInAnswer.records[otherWord.entryID] == nil, "Built-in names never capture personal words")
+        let incrementalEvents = [wrong, correct, event("favorite", "true", 2), event("rating", "0", 3), event("note", "增量笔记", 4)]
+        let context = LearningEngine.Context(words: library.words, questions: library.questions)
+        var incrementalRecords: [UUID: StudyRecord] = [:]
+        var incrementalAnswers: [QuestionRecord] = []
+        for item in incrementalEvents {
+            LearningEngine.apply(item, context: context, records: &incrementalRecords, answers: &incrementalAnswers)
+        }
+        let complete = LearningEngine.reduce(words: library.words, questions: library.questions, events: incrementalEvents)
+        let incremental = incrementalRecords[word.id]!
+        let completeRecord = complete.records[word.id]!
+        assert(incremental.errorCount == completeRecord.errorCount && incremental.isFavorite == completeRecord.isFavorite)
+        assert(incremental.masteryLevel == completeRecord.masteryLevel && incremental.personalNotes == completeRecord.personalNotes)
+        assert(incremental.nextReviewDate == completeRecord.nextReviewDate && incrementalAnswers.map(\.id) == complete.answers.map(\.id),
+               "Incremental event updates must exactly match a complete history rebuild")
+        assert(context.relatedWordIDs(for: question) == [word.id], "Cached question links preserve built-in associations")
         print("PASS: learning rules and revision-specific historical answers/links")
     }
 }

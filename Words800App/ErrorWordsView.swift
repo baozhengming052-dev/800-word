@@ -10,21 +10,23 @@ struct ErrorWordsView: View {
     @State private var selectedQuestions: [Question] = []
     @State private var selectedWordID: UUID?
     private var words: [Word] {
-        dataManager.sorted(dataManager.errorWords.filter { !hideMastered || dataManager.getStudyRecord(for: $0.id).masteryLevel != .mastered }, by: sort)
+        let filtered = dataManager.errorWords.filter { !hideMastered || dataManager.getStudyRecord(for: $0.id).masteryLevel != .mastered }
+        return sort == .errors ? filtered : dataManager.sorted(filtered, by: sort)
     }
     var body: some View {
-        AdaptiveWordBrowser(title: "错词本", words: words, selection: $selectedWordID) { wide, compactDetail in
+        let displayedWords = words
+        AdaptiveWordBrowser(title: "错词本", words: displayedWords, selection: $selectedWordID) { wide, compactDetail in
             List {
                 Section {
                     HStack {
-                        Button { cards = true } label: { Label("词卡巩固", systemImage: "rectangle.on.rectangle") }.disabled(words.isEmpty)
+                        Button { cards = true } label: { Label("词卡巩固", systemImage: "rectangle.on.rectangle") }.disabled(displayedWords.isEmpty)
                         Spacer()
                         Button {
-                            let visible = Set(words.map { $0.id })
+                            let visible = Set(displayedWords.map { $0.id })
                             selectedQuestions = Array(dataManager.practiceQuestions(type: "全部题型", category: "全部分类", errorsOnly: true, limit: dataManager.activeQuestions.count, includeArchived: true)
                                 .filter { dataManager.relatedWordIDs(for: $0).contains(where: visible.contains) }.prefix(20))
                             if selectedQuestions.isEmpty { dataManager.message = "暂时没有关联题目，请先用词卡巩固。" } else { practice = true }
-                        } label: { Label("专项刷题", systemImage: "pencil") }.disabled(words.isEmpty)
+                        } label: { Label("专项刷题", systemImage: "pencil") }.disabled(displayedWords.isEmpty)
                     }.buttonStyle(.borderless)
                     Picker("排序", selection: $sort) {
                         Text("错误次数最多").tag(WordSort.errors)
@@ -32,22 +34,22 @@ struct ErrorWordsView: View {
                     }
                     Toggle("隐藏已掌握词", isOn: $hideMastered)
                 }
-                Section("\(words.count) 个错词 · 点右侧编辑按钮可修改") {
-                    ForEach(words) { word in
+                Section("\(displayedWords.count) 个错词 · 点右侧编辑按钮可修改") {
+                    ForEach(displayedWords) { word in
                         HStack {
                             AdaptiveWordLink(word: word, isWide: wide, selection: $selectedWordID, compactDetailPresented: compactDetail)
                             Button { editWord = word } label: { Image(systemName: "square.and.pencil") }
                                 .buttonStyle(.borderless).accessibilityLabel("编辑\(word.word)错误次数")
                         }.listRowBackground(wide && selectedWordID == word.id ? AppStyle.accent.opacity(0.10) : Color(.secondarySystemGroupedBackground))
                     }
-                    if words.isEmpty {
+                    if displayedWords.isEmpty {
                         Text("这里会收集答错或选择“忘记”的词。你也可以在词条详情中手动录入错误次数。")
                             .foregroundColor(.secondary).padding(.vertical)
                     }
                 }
             }
             .sheet(item: $editWord) { ErrorCountEditor(word: $0) }
-            .sheet(isPresented: $cards) { StudySessionView(title: "巩固薄弱词", words: Array(words.prefix(20))) }
+            .sheet(isPresented: $cards) { StudySessionView(title: "巩固薄弱词", words: Array(displayedWords.prefix(20))) }
             .fullScreenCover(isPresented: $practice) { PracticeSessionView(questions: selectedQuestions) }
         }
     }

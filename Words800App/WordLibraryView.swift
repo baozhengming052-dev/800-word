@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import PDFKit
+import UIKit
 
 struct WordLibraryView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -22,7 +23,8 @@ struct WordLibraryView: View {
         }, by: sort)
     }
     var body: some View {
-        AdaptiveWordBrowser(title: "词库", words: filtered, selection: $selectedWordID) { wide, compactDetail in
+        let displayedWords = filtered
+        AdaptiveWordBrowser(title: "词库", words: displayedWords, selection: $selectedWordID) { wide, compactDetail in
             VStack(spacing: 0) {
                 Picker("词库范围", selection: $personalOnly) {
                     Text("全部").tag(false); Text("我的添加").tag(true)
@@ -48,18 +50,18 @@ struct WordLibraryView: View {
                     } label: { Label("筛选与排序", systemImage: "slider.horizontal.3") }
                 }.font(.subheadline).padding()
                 HStack {
-                    Text("\(filtered.count) 词 · \(sort.rawValue)")
+                    Text("\(displayedWords.count) 词 · \(sort.rawValue)")
                     Spacer()
                     if !search.isEmpty { Button("清空") { search = "" } }
                 }.font(.caption).foregroundColor(.secondary).padding(.horizontal).padding(.bottom, 8)
-                List(filtered) { word in
+                List(displayedWords) { word in
                     AdaptiveWordLink(word: word, isWide: wide, selection: $selectedWordID, compactDetailPresented: compactDetail)
                         .listRowBackground(wide && selectedWordID == word.id ? AppStyle.accent.opacity(0.10) : Color(.systemBackground))
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button { dataManager.toggleFavorite(for: word.id) } label: { Label("收藏", systemImage: "star") }.tint(.orange)
                         }
                 }.listStyle(.plain)
-                if filtered.isEmpty {
+                if displayedWords.isEmpty {
                     Text("没有找到匹配词条。试试输入释义、部分词语，或调整筛选。")
                         .foregroundColor(.secondary).padding()
                 }
@@ -109,7 +111,7 @@ struct WordDetailView: View {
     @Environment(\.presentWordEditor) private var presentWordEditor
     @StateObject private var speaker = WordSpeaker()
     private let initialWord: Word
-    private var word: Word { dataManager.words.first(where: { $0.id == initialWord.id }) ?? initialWord }
+    private var word: Word { dataManager.word(for: initialWord.id) ?? initialWord }
     init(word: Word) { initialWord = word }
     @State private var localEditorRequest: WordEditorRequest?
     @State private var archiveRequest: PersonalRevision?
@@ -180,7 +182,7 @@ struct WordDetailView: View {
                 }
             }
             Section("关联练习") {
-                let related = dataManager.activeQuestions.filter { dataManager.relatedWordIDs(for: $0).contains(word.id) }
+                let related = dataManager.relatedQuestions(for: word.id)
                 Text(related.isEmpty ? "暂时没有关联题目，可以手动添加。" : "有 \(related.count) 道使用中的关联题目，可在刷题中练习。")
                     .font(.subheadline).foregroundColor(.secondary)
                 Button { openEditor(.addQuestion) } label: { Label("给这个词添加题目", systemImage: "plus.square") }
@@ -345,6 +347,7 @@ struct StudySessionView: View {
     @State private var index = 0
     @State private var revealed = false
     @State private var loaded = false
+    @State private var pendingRating: Int?
     private var current: Word? { queue.indices.contains(index) ? queue[index] : nil }
     private var sessionKey: String { "studySession." + title }
     var body: some View {
@@ -407,7 +410,7 @@ struct StudySessionView: View {
             guard !loaded else { return }; loaded = true
             if title != "提醒巩固", let saved = UserDefaults.standard.dictionary(forKey: sessionKey),
                let ids = saved["ids"] as? [String], let progress = saved["index"] as? Int, progress >= 0, progress < ids.count {
-                let restored = ids.compactMap { id in dataManager.activeWords.first { $0.id.uuidString == id } }
+                let restored = ids.compactMap { UUID(uuidString: $0) }.compactMap { dataManager.activeWord(for: $0) }
                 if restored.count == ids.count { queue = restored; index = progress } else { queue = words }
             } else { queue = words }
             saveProgress()
@@ -416,17 +419,51 @@ struct StudySessionView: View {
     }
     private func ratingButton(_ title: String, hint: String, rating: Int, color: Color) -> some View {
         Button {
-            guard let word = current, dataManager.rate(word.id, rating: rating) else { return }
-            speaker.stop(); index += 1; revealed = false; saveProgress()
+            guard pendingRating == nil, let word = current else { return }
+            pendingRating = rating
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Task { @MainActor in
+                // Let SwiftUI draw the pressed/saving state before persistence work starts.
+                await Task.yield()
+                guard dataManager.rate(word.id, rating: rating) else { pendingRating = nil; return }
+                speaker.stop()
+                withAnimation(.easeOut(duration: 0.16)) { index += 1; revealed = false }
+                saveProgress(); pendingRating = nil
+            }
         } label: {
-            VStack(spacing: 6) { Text(title).font(.headline); Text(hint).font(.caption2) }
-                .frame(maxWidth: .infinity).padding(.vertical, 12).foregroundColor(color)
-                .background(color.opacity(0.10)).cornerRadius(14)
-        }.buttonStyle(.plain)
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    if pendingRating == rating { ProgressView().scaleEffect(0.75).tint(color) }
+                    Text(pendingRating == rating ? "正在记录" : title).font(.headline)
+                }
+                Text(hint).font(.caption2)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 12).foregroundColor(color)
+        }
+        .buttonStyle(StudyRatingButtonStyle(color: color))
+        .disabled(pendingRating != nil)
+        .accessibilityHint("记录本次掌握情况并进入下一个词")
     }
     private func saveProgress() {
         if index >= queue.count { UserDefaults.standard.removeObject(forKey: sessionKey) }
         else { UserDefaults.standard.set(["ids": queue.map { $0.id.uuidString }, "index": index], forKey: sessionKey) }
+    }
+}
+private struct StudyRatingButtonStyle: ButtonStyle {
+    let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(color.opacity(configuration.isPressed ? 0.22 : 0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(color.opacity(configuration.isPressed ? 0.55 : 0.16), lineWidth: configuration.isPressed ? 2 : 1)
+            )
+            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.95 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.10), value: configuration.isPressed)
     }
 }
 struct SourcePDFView: View {

@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import UIKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -16,10 +17,11 @@ struct ContentView: View {
             ProfileView().tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(4)
         }
         .tint(AppStyle.accent)
+        .onChange(of: selectedTab) { _ in UISelectionFeedbackGenerator().selectionChanged() }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
-                dataManager.objectWillChange.send()
-                dataManager.refreshReminder()
+                dataManager.refreshDailyMetrics()
+                dataManager.scheduleReminderRefresh(after: 1)
             }
         }
         .alert("提示", isPresented: Binding(get: { !dataManager.message.isEmpty }, set: { if !$0 { dataManager.message = "" } })) {
@@ -28,14 +30,14 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .reviewNotification)) { notification in
             UserDefaults.standard.removeObject(forKey: "pendingNotificationWords")
             let ids = notification.userInfo?["wordIDs"] as? [String] ?? []
-            notificationWords = ids.compactMap { id in dataManager.activeWords.first { $0.id.uuidString == id } }
+            notificationWords = ids.compactMap { UUID(uuidString: $0) }.compactMap { dataManager.activeWord(for: $0) }
             if notificationWords.isEmpty { selectedTab = 3 } else { showNotificationReview = true }
         }
         .onAppear {
-            dataManager.refreshReminder()
+            dataManager.scheduleReminderRefresh(after: 1)
             let ids = UserDefaults.standard.stringArray(forKey: "pendingNotificationWords") ?? []
             if !ids.isEmpty {
-                notificationWords = ids.compactMap { id in dataManager.activeWords.first { $0.id.uuidString == id } }
+                notificationWords = ids.compactMap { UUID(uuidString: $0) }.compactMap { dataManager.activeWord(for: $0) }
                 showNotificationReview = !notificationWords.isEmpty
                 UserDefaults.standard.removeObject(forKey: "pendingNotificationWords")
             }
@@ -52,11 +54,13 @@ struct HomeView: View {
     @State private var showLearn = false
     @State private var showReview = false
     @State private var showReminderSetup = false
-    private var reviewWords: [Word] {
-        let due = dataManager.dueWords
-        return due + dataManager.errorWords.filter { w in !due.contains(where: { $0.id == w.id }) }
-    }
     var body: some View {
+        let todayLearned = dataManager.todayLearnedCount
+        let dueWords = dataManager.dueWords
+        let errorWords = dataManager.errorWords
+        let newWords = dataManager.newWords
+        let dueIDs = Set(dueWords.map(\.id))
+        let reviewWords = dueWords + errorWords.filter { !dueIDs.contains($0.id) }
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -70,10 +74,10 @@ struct HomeView: View {
                         HStack(alignment: .firstTextBaseline) {
                             Text("今日学习").font(.headline)
                             Spacer()
-                            Text("\(dataManager.todayLearnedCount)").font(.system(size: 34, weight: .semibold, design: .rounded)).monospacedDigit()
+                            Text("\(todayLearned)").font(.system(size: 34, weight: .semibold, design: .rounded)).monospacedDigit()
                             Text("/ \(dailyGoal) 词").foregroundColor(.secondary)
                         }
-                        ProgressView(value: Double(min(dailyGoal, dataManager.todayLearnedCount)), total: Double(max(1, dailyGoal)))
+                        ProgressView(value: Double(min(dailyGoal, todayLearned)), total: Double(max(1, dailyGoal)))
                         Button { showLearn = true } label: {
                             Label("开始 / 继续学词", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 8)
                         }.buttonStyle(.borderedProminent)
@@ -81,8 +85,8 @@ struct HomeView: View {
                             .font(.caption).foregroundColor(.secondary)
                     }.padding(20).background(AppStyle.accent.opacity(0.08)).cornerRadius(20)
                     HStack(spacing: 12) {
-                        StatItem(title: "到期复习", value: "\(dataManager.dueWords.count)", color: .orange)
-                        StatItem(title: "高频错词", value: "\(dataManager.errorWords.count)", color: .red)
+                        StatItem(title: "到期复习", value: "\(dueWords.count)", color: .orange)
+                        StatItem(title: "高频错词", value: "\(errorWords.count)", color: .red)
                         StatItem(title: "今日答题", value: "\(dataManager.todayCount)", color: AppStyle.accent)
                     }
                     Button { showReview = true } label: {
@@ -94,8 +98,8 @@ struct HomeView: View {
                             Spacer()
                             Image(systemName: "arrow.right.circle.fill").font(.title)
                         }.padding(18)
-                    }.buttonStyle(.plain).background(Color(.secondarySystemGroupedBackground)).cornerRadius(16)
-                    if let word = (dataManager.errorWords.first ?? dataManager.newWords.first) {
+                    }.buttonStyle(ResponsivePressButtonStyle()).background(Color(.secondarySystemGroupedBackground)).cornerRadius(16)
+                    if let word = (errorWords.first ?? newWords.first) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("今天重点记住").font(.caption).foregroundColor(.secondary)
                             NavigationLink(destination: WordDetailView(word: word)) {
@@ -103,7 +107,7 @@ struct HomeView: View {
                                     Text(word.word).font(.system(size: 28, weight: .bold))
                                     Spacer(); Image(systemName: "chevron.right")
                                 }
-                            }.buttonStyle(.plain)
+                            }.buttonStyle(ResponsivePressButtonStyle())
                             Text(word.meanings.first ?? "").font(.body).lineSpacing(5)
                             Text(word.isPersonal ? "\(word.category) · 手动添加" : "\(word.category) · 原资料第 \(word.sourcePages) 页").font(.caption).foregroundColor(.secondary)
                         }.padding(20).background(Color(.secondarySystemGroupedBackground)).cornerRadius(16)
@@ -118,7 +122,7 @@ struct HomeView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("政名政利公考").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showLearn) {
-                StudySessionView(title: "每日学词", words: Array(dataManager.newWords.prefix(max(1, dailyGoal - dataManager.todayLearnedCount))))
+                StudySessionView(title: "每日学词", words: Array(newWords.prefix(max(1, dailyGoal - todayLearned))))
             }
             .sheet(isPresented: $showReview) {
                 StudySessionView(title: "巩固薄弱词", words: Array(reviewWords.prefix(dailyGoal)))

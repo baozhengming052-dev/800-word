@@ -133,9 +133,10 @@ struct SavedWordsView: View {
         favorites ? dataManager.favoriteWords : dataManager.sorted(dataManager.words.filter { dataManager.getStudyRecord(for: $0.id).lastStudyDate != .distantPast }, by: .recent)
     }
     var body: some View {
+        let displayedWords = words
         List {
-            if words.isEmpty { Text(favorites ? "还没有收藏，去词库收藏想重点记忆的词。" : "完成一组学词后，学习记录会显示在这里。").foregroundColor(.secondary) }
-            ForEach(words) { word in NavigationLink(destination: WordDetailView(word: word)) { WordRowView(word: word) } }
+            if displayedWords.isEmpty { Text(favorites ? "还没有收藏，去词库收藏想重点记忆的词。" : "完成一组学词后，学习记录会显示在这里。").foregroundColor(.secondary) }
+            ForEach(displayedWords) { word in NavigationLink(destination: WordDetailView(word: word)) { WordRowView(word: word) } }
         }.navigationTitle(favorites ? "我的收藏" : "学习记录")
     }
 }
@@ -144,11 +145,12 @@ struct QuestionHistoryView: View {
     @State private var wrongOnly = false
     private var records: [QuestionRecord] { dataManager.questionRecords.reversed().filter { !wrongOnly || !$0.isCorrect } }
     var body: some View {
+        let displayedRecords = records
         List {
             Toggle("只看错题", isOn: $wrongOnly)
-            if records.isEmpty { Text("暂无符合条件的答题记录。").foregroundColor(.secondary) }
-            ForEach(records) { record in
-                if let q = dataManager.questions.first(where: { $0.id == record.questionId }) {
+            if displayedRecords.isEmpty { Text("暂无符合条件的答题记录。").foregroundColor(.secondary) }
+            ForEach(displayedRecords) { record in
+                if let q = dataManager.question(for: record.questionId) {
                     NavigationLink(destination: QuestionExplanationView(question: q, selectedAnswer: record.selectedAnswer)) {
                         VStack(alignment: .leading, spacing: 7) {
                             Text(q.content).lineLimit(2)

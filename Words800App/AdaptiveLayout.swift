@@ -9,6 +9,17 @@ enum AdaptiveLayoutRules {
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
 
+/// Gives plain/card buttons an immediate touch-down response without delaying their action.
+struct ResponsivePressButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.10), value: configuration.isPressed)
+    }
+}
+
 enum WordEditorKind { case notes, errors, source, personalWord, addQuestion }
 
 struct WordEditorRequest: Identifiable {
@@ -136,7 +147,7 @@ struct AdaptiveWordLink: View {
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundColor(.secondary)
             }.contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ResponsivePressButtonStyle())
         .accessibilityAddTraits(isWide && selection == word.id ? .isSelected : [])
     }
 }

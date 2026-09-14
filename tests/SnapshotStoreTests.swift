@@ -6,7 +6,11 @@ import Foundation
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let t = 1_700_000_000_000.0
-        let validate: (Data) throws -> StudySnapshot = { try SnapshotCodec.decode(data: $0, builtInWords: [], builtInQuestions: [], now: t) }
+        var validationCount = 0
+        let validate: (Data) throws -> StudySnapshot = {
+            validationCount += 1
+            return try SnapshotCodec.decode(data: $0, builtInWords: [], builtInQuestions: [], now: t)
+        }
         func expect(_ condition: @autoclosure () throws -> Bool, _ message: String = "Store contract failed") rethrows {
             let result = try condition()
             assert(result, message)
@@ -30,12 +34,19 @@ import Foundation
         let second = StudySnapshot(revisions: [word, edited])
         try store.save(second)
         try expect(try store.load()?.revisions == [word, edited])
+        let third = StudySnapshot(events: [StudyEvent(wordID: word.entryID, kind: "favorite", value: "true", timestamp: t)], revisions: [word, edited])
+        let countBeforeValidatedSave = validationCount
+        try store.saveValidated(third)
+        assert(validationCount == countBeforeValidatedSave, "Validated save must not decode the same history again")
+        try expect(try store.load() == third, "Incremental save persists the proposed snapshot")
+        try expect(try JSONDecoder().decode(StudySnapshot.self, from: Data(contentsOf: previousURL)) == second,
+            "Incremental save retains the last primary as the recovery snapshot")
         let beforeInvalidSave = try Data(contentsOf: primaryURL)
         do { try store.save(StudySnapshot(revisions: [word, word])); fatalError("Expected validation failure") } catch { }
         try expect(try Data(contentsOf: primaryURL) == beforeInvalidSave, "Invalid save leaves persisted state untouched")
         let corrupt = Data("damaged v3".utf8)
         try corrupt.write(to: primaryURL)
-        try expect(try store.load()?.revisions == [word], "Recover only previous valid v3")
+        try expect(try store.load()?.revisions == [word, edited], "Recover only previous valid v3")
         assert(store.recoveryMessage != nil)
         try expect(try Data(contentsOf: primaryURL) == corrupt, "Recovery retains original damaged primary")
         try store.save(first)
@@ -81,6 +92,7 @@ import Foundation
         let beforeFuturePrimary = try contents(futurePrimaryDirectory)
         rejectsFuture { _ = try futurePrimaryStore.load() }
         rejectsFuture { try futurePrimaryStore.save(first) }
+        rejectsFuture { try futurePrimaryStore.saveValidated(first) }
         try expect(try contents(futurePrimaryDirectory) == beforeFuturePrimary,
             "Future primary and previous bytes/file set remain unchanged, including no corrupt-evidence copies")
         assert(futurePrimaryStore.recoveryMessage == nil)
@@ -90,6 +102,7 @@ import Foundation
         ])
         let beforeFuturePrevious = try contents(futurePreviousDirectory)
         rejectsFuture { try futurePreviousStore.save(second) }
+        rejectsFuture { try futurePreviousStore.saveValidated(second) }
         try expect(try contents(futurePreviousDirectory) == beforeFuturePrevious,
             "Saving cannot replace a future previous file with the current primary")
         let (onlyFutureBackupDirectory, onlyFutureBackupStore) = try scenario("only-future-backup", [

@@ -193,7 +193,7 @@ struct BackupMergeView: View {
             .navigationTitle("合并学习备份").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
         }.navigationViewStyle(.stack)
-        .onChange(of: dataManager.snapshotGeneration) { _ in
+        .onReceive(dataManager.snapshotDidChange) { _ in
             if !completed {
                 stale = true
                 errorMessage = "本机内容或学习记录已变化，这份预览不能再保存。请取消后重新导入或重新打开本机冲突处理。"
@@ -228,6 +228,7 @@ struct SyncContentConflictSections: View {
         return Dictionary(uniqueKeysWithValues: catalog.words.map { ($0.id, $0.word) })
     }
     var body: some View {
+        let resolvedNames = names
         ForEach(preview.contentConflicts) { conflict in
             Section(conflict.kind == .revision ? "同一条目的不同版本" : "同名词条：\(conflict.normalizedName ?? "")") {
                 Text(conflict.kind == .revision ? "选择要保留的内容和归档状态。各版本历史会保留。" : "选择继续使用的词条，其余个人同名词将归档。原资料词条不可改写或归档。")
@@ -236,7 +237,7 @@ struct SyncContentConflictSections: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if let revision = option.revision {
                             Text("版本：\(revision.id.uuidString)").font(.caption2).foregroundColor(.secondary)
-                            PersonalPayloadView(word: revision.word, question: revision.question, archived: revision.archived, wordNames: names)
+                            PersonalPayloadView(word: revision.word, question: revision.question, archived: revision.archived, wordNames: resolvedNames)
                         }
                         if let word = option.builtInWord {
                             Text("原资料词条：\(word.word)").font(.headline)

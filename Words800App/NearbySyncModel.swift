@@ -39,7 +39,7 @@ struct SyncChange: Identifiable {
             guard let self = self, !ready, self.exchange != nil, !self.finished else { return }
             self.interrupted("连接已断开，请重新开始。")
         }
-        localChanges = dataManager.$snapshotGeneration.dropFirst().sink { [weak self] _ in
+        localChanges = dataManager.snapshotDidChange.sink { [weak self] _ in
             guard let self = self, self.started, self.exchange != nil, !self.committing, self.baseline != nil, !self.finished else { return }
             self.cancel()
             self.status = "本机学习记录或个人内容已变化，旧同步方案已取消。请重新开始同步。"

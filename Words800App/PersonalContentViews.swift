@@ -166,7 +166,7 @@ struct PersonalQuestionEditor: View {
                 Section("关联词条（至少一个）") {
                     ForEach(content.relatedWordIDs, id: \.self) { id in
                         HStack {
-                            Text(dataManager.words.first(where: { $0.id == id })?.word ?? "词条已不可用")
+                            Text(dataManager.word(for: id)?.word ?? "词条已不可用")
                             if dataManager.archivedWordIDs.contains(id) { Text("已归档，请移除或先恢复").font(.caption).foregroundColor(.orange) }
                             Spacer()
                             Button("移除") { content.relatedWordIDs.removeAll { $0 == id } }.buttonStyle(.borderless)
@@ -346,7 +346,7 @@ struct PersonalPayloadView: View {
                 Text("来源：\(question.source.isEmpty ? "手动录入" : question.source)")
                 Text("关联词条")
                 ForEach(question.relatedWordIDs, id: \.self) { id in
-                    Text((wordNames[id] ?? dataManager.words.first { $0.id == id }?.word ?? "待导入词条") + " · " + id.uuidString).font(.caption)
+                    Text((wordNames[id] ?? dataManager.word(for: id)?.word ?? "待导入词条") + " · " + id.uuidString).font(.caption)
                 }
             }
         }.textSelection(.enabled).fixedSize(horizontal: false, vertical: true)

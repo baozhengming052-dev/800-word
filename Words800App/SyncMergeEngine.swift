@@ -193,6 +193,7 @@ enum SyncMergeEngine {
         let remoteState = LearningEngine.reduce(words: words, questions: questions, events: incoming.events).records
         let mergedState = LearningEngine.reduce(words: words, questions: questions, events: merged.events).records
         let qByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
+        let learningContext = LearningEngine.Context(words: words, questions: questions)
         var linksByQuestionID: [UUID: [UUID]] = [:]
         func edits(_ events: [StudyEvent]) -> (notes: Set<UUID>, manual: Set<UUID>, errors: Set<UUID>) {
             var notes = Set<UUID>(), manual = Set<UUID>(), errors = Set<UUID>()
@@ -205,7 +206,7 @@ enum SyncMergeEngine {
                 if event.kind == "answer", let qid = event.questionID, let q = qByID[qid], Int(event.value) != q.correctAnswer {
                     if linksByQuestionID[qid] == nil {
                         // UUID-linked personal questions need no spelling lookup. Cache bundled lookups per revision.
-                        linksByQuestionID[qid] = LearningEngine.relatedWordIDs(for: q, words: q.personalEntryID == nil ? words : [])
+                        linksByQuestionID[qid] = learningContext.relatedWordIDs(for: q)
                     }
                     errors.formUnion(linksByQuestionID[qid] ?? [])
                 }

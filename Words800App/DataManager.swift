@@ -4,6 +4,19 @@ import UserNotifications
 import CryptoKit
 
 @MainActor final class DataManager: ObservableObject {
+    private final class LearningViewState {
+        var records: [UUID: StudyRecord] = [:]
+        var answers: [QuestionRecord] = []
+        var correctAnswerCount = 0
+        var summaryDay = Date.distantPast
+        var todayAnswerCount = 0
+        var todayRatedWordIDs = Set<UUID>()
+        init(records: [UUID: StudyRecord] = [:], answers: [QuestionRecord] = [], correctAnswerCount: Int = 0,
+             summaryDay: Date = .distantPast, todayAnswerCount: Int = 0, todayRatedWordIDs: Set<UUID> = []) {
+            self.records = records; self.answers = answers; self.correctAnswerCount = correctAnswerCount
+            self.summaryDay = summaryDay; self.todayAnswerCount = todayAnswerCount; self.todayRatedWordIDs = todayRatedWordIDs
+        }
+    }
     static let shared = DataManager()
     @Published private(set) var words: [Word] = []
     @Published private(set) var questions: [Question] = []
@@ -11,19 +24,28 @@ import CryptoKit
     @Published private(set) var archivedWordIDs: Set<UUID> = []
     @Published private(set) var personalHeads: [UUID: [PersonalRevision]] = [:]
     @Published private(set) var contentConflictCount = 0
-    @Published private(set) var snapshotGeneration = 0
-    @Published private(set) var studyRecords: [UUID: StudyRecord] = [:]
-    @Published private(set) var questionRecords: [QuestionRecord] = []
+    private var learningViewState = LearningViewState()
     @Published var message = ""
+    let snapshotDidChange = PassthroughSubject<Void, Never>()
     private var snapshot = StudySnapshot()
     private var searchIndex: [UUID: String] = [:]
+    private var wordsByID: [UUID: Word] = [:]
     private var questionsByID: [UUID: Question] = [:]
+    private var learningContext = LearningEngine.Context(words: [], questions: [])
+    private var activeQuestionsByWordID: [UUID: [Question]] = [:]
+    private var wordIDs = Set<UUID>()
+    private var eventIDs = Set<UUID>()
+    private var lastEventTimestamp = 0.0
+    private var reminderRefreshWorkItem: DispatchWorkItem?
     private(set) var libraryFingerprint = ""
     private let directory: URL
     private var builtInWords: [Word] = []
     private var builtInQuestions: [Question] = []
     private var store: SnapshotStore?
     private var persistenceAvailable = true
+
+    var studyRecords: [UUID: StudyRecord] { learningViewState.records }
+    var questionRecords: [QuestionRecord] { learningViewState.answers }
 
     private init() {
         directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -72,11 +94,9 @@ import CryptoKit
             return r.nextReviewDate <= Date()
         }, by: .errors)
     }
-    var accuracy: Int { questionRecords.isEmpty ? 0 : Int(100 * Double(questionRecords.filter { $0.isCorrect }.count) / Double(questionRecords.count)) }
-    var todayCount: Int { questionRecords.filter { Calendar.current.isDateInToday($0.answeredAt) }.count }
-    var todayLearnedCount: Int {
-        Set(snapshot.events.filter { $0.kind == "rating" && Calendar.current.isDateInToday($0.date) }.compactMap { $0.wordID }).count
-    }
+    var accuracy: Int { questionRecords.isEmpty ? 0 : Int(100 * Double(learningViewState.correctAnswerCount) / Double(questionRecords.count)) }
+    var todayCount: Int { learningViewState.todayAnswerCount }
+    var todayLearnedCount: Int { learningViewState.todayRatedWordIDs.count }
     func belongs(_ word: Word, to category: String) -> Bool {
         category == "全部分类" || (word.isPersonal && word.category == category) || word.occurrences.contains { $0.category == category }
     }
@@ -128,13 +148,77 @@ import CryptoKit
     }
     @discardableResult private func append(_ event: StudyEvent) -> Bool {
         guard persistenceAvailable else { message = "学习记录未能载入，请先在“我的”导入有效备份。"; return false }
+        guard let store = store else { message = "词库或存储目录未能载入，无法安全保存。"; return false }
         var proposed = snapshot
         // Preserve local action order even when two actions share a clock tick.
-        let stamp = max(event.timestamp, (snapshot.events.map { $0.timestamp }.max() ?? 0) + 0.001)
-        proposed.events.append(StudyEvent(id: event.id, wordID: event.wordID, kind: event.kind,
-            value: event.value, timestamp: stamp, questionID: event.questionID))
-        do { try save(proposed, expected: snapshot, requireResolvedContent: false); return true }
+        let stamp = max(event.timestamp, lastEventTimestamp + 0.001)
+        let storedEvent = StudyEvent(id: event.id, wordID: event.wordID, kind: event.kind,
+            value: event.value, timestamp: stamp, questionID: event.questionID)
+        guard validateIncrementalEvent(storedEvent) else {
+            message = "学习记录内容无效，未写入。"
+            return false
+        }
+        proposed.events.append(storedEvent)
+        do {
+            // The unchanged prefix was already validated. Keep an atomic previous copy, but do not
+            // decode and revalidate three complete history files for every study tap.
+            try store.saveValidated(proposed)
+            let viewState = learningViewState
+            objectWillChange.send()
+            refreshDailyMetricsIfNeeded(viewState)
+            let previousAnswerCount = viewState.answers.count
+            LearningEngine.apply(storedEvent, context: learningContext, records: &viewState.records, answers: &viewState.answers)
+            if viewState.answers.count > previousAnswerCount, let answer = viewState.answers.last {
+                if answer.isCorrect { viewState.correctAnswerCount += 1 }
+                if Calendar.current.isDate(answer.answeredAt, inSameDayAs: viewState.summaryDay) { viewState.todayAnswerCount += 1 }
+            }
+            if storedEvent.kind == "rating", let id = storedEvent.wordID,
+               Calendar.current.isDate(storedEvent.date, inSameDayAs: viewState.summaryDay) {
+                viewState.todayRatedWordIDs.insert(id)
+            }
+            snapshot = proposed; lastEventTimestamp = stamp; eventIDs.insert(storedEvent.id)
+            snapshotDidChange.send()
+            scheduleReminderRefresh()
+            return true
+        }
         catch { message = "保存失败：\(error.localizedDescription)"; return false }
+    }
+    private func validateIncrementalEvent(_ event: StudyEvent) -> Bool {
+        guard snapshot.events.count < SnapshotCodec.maximumRecords - snapshot.revisions.count,
+              !eventIDs.contains(event.id), event.timestamp.isFinite, event.timestamp >= 0,
+              event.timestamp <= Date().timeIntervalSince1970 * 1000 + 86_400_000,
+              event.value.utf8.count <= 100_000 else { return false }
+        let kinds = Set(["answer", "favorite", "mastery", "note", "errorAdjustment", "review", "rating"])
+        guard kinds.contains(event.kind) else { return false }
+        if let id = event.wordID, !wordIDs.contains(id) { return false }
+        if let id = event.questionID, questionsByID[id] == nil { return false }
+        if event.kind == "answer" {
+            guard let id = event.questionID, let question = questionsByID[id], let answer = Int(event.value),
+                  question.options.indices.contains(answer) else { return false }
+        } else if event.wordID == nil { return false }
+        switch event.kind {
+        case "errorAdjustment": return Int(event.value).map { (-99999...99999).contains($0) } ?? false
+        case "favorite": return ["true", "false"].contains(event.value)
+        case "mastery": return MasteryLevel(rawValue: event.value) != nil
+        case "rating": return ["0", "1", "2"].contains(event.value)
+        default: return true
+        }
+    }
+    private func refreshDailyMetricsIfNeeded(_ state: LearningViewState, now: Date = Date()) {
+        let day = Calendar.current.startOfDay(for: now)
+        guard state.summaryDay != day else { return }
+        state.summaryDay = day
+        state.todayAnswerCount = state.answers.lazy.filter { Calendar.current.isDate($0.answeredAt, inSameDayAs: day) }.count
+        state.todayRatedWordIDs = Set(snapshot.events.lazy.filter {
+            $0.kind == "rating" && Calendar.current.isDate($0.date, inSameDayAs: day)
+        }.compactMap(\.wordID))
+    }
+    func refreshDailyMetrics() {
+        let state = learningViewState
+        let day = Calendar.current.startOfDay(for: Date())
+        guard state.summaryDay != day else { return }
+        objectWillChange.send()
+        refreshDailyMetricsIfNeeded(state)
     }
     func toggleFavorite(for id: UUID) {
         append(StudyEvent(wordID: id, kind: "favorite", value: getStudyRecord(for: id).isFavorite ? "false" : "true"))
@@ -159,7 +243,8 @@ import CryptoKit
         return append(StudyEvent(kind: "answer", value: String(selectedAnswer), questionID: questionId))
     }
     func practiceQuestions(type: String, category: String, errorsOnly: Bool, limit: Int, includeArchived: Bool = false) -> [Question] {
-        let weak = Set(errorWords.map { $0.id })
+        let currentErrorWords = errorWords
+        let weak = Set(currentErrorWords.map { $0.id })
         let eligible = Set(activeWords.filter { belongs($0, to: category) && (includeArchived || !$0.sourceDeleted) }.map { $0.id })
         let filtered = activeQuestions.filter { q in
             let linked = relatedWordIDs(for: q)
@@ -167,7 +252,7 @@ import CryptoKit
             && (!errorsOnly || linked.contains(where: weak.contains))
         }
         if errorsOnly {
-            let weights = Dictionary(uniqueKeysWithValues: errorWords.map { ($0.id, getStudyRecord(for: $0.id).errorCount) })
+            let weights = Dictionary(uniqueKeysWithValues: currentErrorWords.map { ($0.id, getStudyRecord(for: $0.id).errorCount) })
             return Array(filtered.shuffled().sorted {
                 (relatedWordIDs(for: $0).map { weights[$0, default: 0] }.max() ?? 0) >
                 (relatedWordIDs(for: $1).map { weights[$0, default: 0] }.max() ?? 0)
@@ -180,10 +265,20 @@ import CryptoKit
     }
     private func publish(_ catalog: PersonalCatalog) {
         words = catalog.words; questions = catalog.questions
-        activeQuestions = PersonalTransactions.practiceQuestions(catalog: catalog)
+        learningContext = LearningEngine.Context(words: words, questions: questions)
+        activeQuestions = PersonalTransactions.practiceQuestions(catalog: catalog, context: learningContext)
         archivedWordIDs = catalog.archivedWordIDs; personalHeads = catalog.headsByEntryID
         contentConflictCount = catalog.conflictingEntryIDs.count + catalog.nameCollisions.count
         questionsByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
+        wordsByID = Dictionary(uniqueKeysWithValues: words.map { ($0.id, $0) })
+        wordIDs = Set(words.map(\.id))
+        eventIDs = Set(snapshot.events.map(\.id))
+        activeQuestionsByWordID = [:]
+        for question in activeQuestions {
+            for id in learningContext.relatedWordIDs(for: question) {
+                activeQuestionsByWordID[id, default: []].append(question)
+            }
+        }
         searchIndex = [:]
         for word in words {
             let text = ([word.word, word.pinyin, word.category, word.subcategory, word.keyPoints]
@@ -192,9 +287,16 @@ import CryptoKit
             searchIndex[word.id] = normalize(text)
         }
         let state = LearningEngine.reduce(words: words, questions: questions, events: snapshot.events)
-        studyRecords = state.records; questionRecords = state.answers
+        let viewState = LearningViewState(records: state.records, answers: state.answers,
+            correctAnswerCount: state.answers.lazy.filter(\.isCorrect).count)
+        refreshDailyMetricsIfNeeded(viewState)
+        learningViewState = viewState
+        lastEventTimestamp = snapshot.events.reduce(0) { max($0, $1.timestamp) }
     }
     func question(for event: StudyEvent) -> Question? { event.questionID.flatMap { questionsByID[$0] } }
+    func question(for id: UUID) -> Question? { questionsByID[id] }
+    func word(for id: UUID) -> Word? { wordsByID[id] }
+    func activeWord(for id: UUID) -> Word? { archivedWordIDs.contains(id) ? nil : wordsByID[id] }
     private func decodeSnapshot(_ data: Data) throws -> StudySnapshot {
         try SnapshotCodec.decode(data: data, builtInWords: builtInWords, builtInQuestions: builtInQuestions)
     }
@@ -239,15 +341,17 @@ import CryptoKit
         if requireResolvedContent {
             catalog = try SyncMergeEngine.validateProposal(proposed, words: builtInWords, questions: builtInQuestions)
         } else { catalog = try self.catalog(for: proposed) }
-        try store.save(proposed)
+        // The proposal was fully checked above; reuse the validated in-memory/disk prefix when safe.
+        try store.saveValidated(proposed)
         snapshot = proposed; persistenceAvailable = true
-        publish(catalog); snapshotGeneration += 1; refreshReminder()
+        publish(catalog); snapshotDidChange.send(); scheduleReminderRefresh()
     }
     func expectedHeads(for entryID: UUID) -> Set<UUID> { Set((personalHeads[entryID] ?? []).map(\.id)) }
     func currentRevision(for entryID: UUID) -> PersonalRevision? { personalHeads[entryID]?.last }
     func relatedWordIDs(for question: Question) -> [UUID] {
-        LearningEngine.relatedWordIDs(for: question, words: builtInWords)
+        learningContext.relatedWordIDs(for: question)
     }
+    func relatedQuestions(for wordID: UUID) -> [Question] { activeQuestionsByWordID[wordID] ?? [] }
     func matchingWords(_ name: String, excluding entryID: UUID? = nil) -> [Word] {
         let key = PersonalLibrary.normalizedName(name)
         return activeWords.filter { $0.id != entryID && PersonalLibrary.normalizedName($0.word) == key }
@@ -289,13 +393,15 @@ import CryptoKit
         return true
     }
     func refreshReminder() {
+        reminderRefreshWorkItem?.cancel(); reminderRefreshWorkItem = nil
         let center = UNUserNotificationCenter.current()
         let ids = (0..<31).map { "words800.day.\($0)" }
         center.removePendingNotificationRequests(withIdentifiers: ids + ["words800.daily"])
         guard UserDefaults.standard.bool(forKey: "reminderEnabled") else { return }
         let weak = errorWords.filter { !$0.sourceDeleted && getStudyRecord(for: $0.id).masteryLevel != .mastered }
         let fresh = newWords
-        let candidates = weak + fresh.filter { w in !weak.contains(where: { $0.id == w.id }) }
+        let weakIDs = Set(weak.map(\.id))
+        let candidates = weak + fresh.filter { !weakIDs.contains($0.id) }
         let hour = (UserDefaults.standard.object(forKey: "reminderHour") as? Int) ?? 20
         let minute = UserDefaults.standard.integer(forKey: "reminderMinute")
         let calendar = Calendar.current
@@ -323,6 +429,13 @@ import CryptoKit
                 if let error = error { Task { @MainActor in self.message = "提醒设置失败：\(error.localizedDescription)" } }
             }
         }
+    }
+    func scheduleReminderRefresh(after delay: TimeInterval = 8) {
+        reminderRefreshWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.refreshReminder() }
+        reminderRefreshWorkItem = work
+        // Notifications do not need to be rebuilt between every word in a fast study run.
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
     private func migrateLegacy() throws {
         // Preserve old defaults and raw backup even for the sample words absent from the real source.
