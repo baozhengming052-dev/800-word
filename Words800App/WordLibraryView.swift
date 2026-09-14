@@ -3,6 +3,10 @@ import AVFoundation
 import PDFKit
 import UIKit
 
+private struct NewWordQuestionRequest: Identifiable {
+    let id: UUID
+}
+
 struct WordLibraryView: View {
     @EnvironmentObject var dataManager: DataManager
     @State private var search = ""
@@ -14,6 +18,9 @@ struct WordLibraryView: View {
     @State private var personalArchived = false
     @State private var addingWord = false
     @State private var selectedWordID: UUID?
+    @State private var savedWordAwaitingQuestion: UUID?
+    @State private var showQuestionPrompt = false
+    @State private var immediateQuestionRequest: NewWordQuestionRequest?
     private var filtered: [Word] {
         dataManager.sorted(dataManager.searchWords(keyword: search, includePersonalArchived: personalArchived).filter {
             dataManager.belongs($0, to: category) && (showArchived || !$0.sourceDeleted)
@@ -72,8 +79,33 @@ struct WordLibraryView: View {
             } }
         }
         .sheet(isPresented: $addingWord) {
-            PersonalWordEditor(onSaved: selectSavedWord, onUseExisting: selectSavedWord)
+            PersonalWordEditor(onSaved: savedNewWord, onUseExisting: selectSavedWord)
         }
+        .onChange(of: addingWord) { isPresenting in
+            guard !isPresenting, savedWordAwaitingQuestion != nil else { return }
+            showQuestionPrompt = true
+        }
+        .confirmationDialog(questionPromptTitle, isPresented: $showQuestionPrompt, titleVisibility: .visible) {
+            Button("立即添加题目") {
+                guard let id = savedWordAwaitingQuestion else { return }
+                immediateQuestionRequest = NewWordQuestionRequest(id: id)
+                savedWordAwaitingQuestion = nil
+            }
+            Button("稍后再说", role: .cancel) { savedWordAwaitingQuestion = nil }
+        } message: {
+            Text("题目会自动关联这个词；录入后可直接在刷题和错词专项中练习。")
+        }
+        .sheet(item: $immediateQuestionRequest) { request in
+            PersonalQuestionEditor(relatedWordIDs: [request.id])
+        }
+    }
+    private var questionPromptTitle: String {
+        guard let id = savedWordAwaitingQuestion, let word = dataManager.word(for: id) else { return "词条已保存" }
+        return "“\(word.word)”已保存，要立即添加题目吗？"
+    }
+    private func savedNewWord(_ id: UUID) {
+        selectSavedWord(id)
+        savedWordAwaitingQuestion = id
     }
     private func selectSavedWord(_ id: UUID) {
         search = ""; category = "全部分类"; status = "全部状态"
