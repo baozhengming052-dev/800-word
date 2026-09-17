@@ -116,7 +116,13 @@ struct WordLibraryView: View {
 struct WordRowView: View {
     @EnvironmentObject var dataManager: DataManager
     let word: Word
-    let errorActivityDate: Date? = nil
+    let errorActivityDate: Date?
+
+    init(word: Word, errorActivityDate: Date? = nil) {
+        self.word = word
+        self.errorActivityDate = errorActivityDate
+    }
+
     private var record: StudyRecord { dataManager.getStudyRecord(for: word.id) }
     var body: some View {
         HStack(spacing: 12) {

@@ -133,10 +133,24 @@ struct AdaptiveWordBrowser<Sidebar: View>: View {
 
 struct AdaptiveWordLink: View {
     let word: Word
-    let errorActivityDate: Date? = nil
+    let errorActivityDate: Date?
     let isWide: Bool
     @Binding var selection: UUID?
     @Binding var compactDetailPresented: Bool
+
+    init(
+        word: Word,
+        errorActivityDate: Date? = nil,
+        isWide: Bool,
+        selection: Binding<UUID?>,
+        compactDetailPresented: Binding<Bool>
+    ) {
+        self.word = word
+        self.errorActivityDate = errorActivityDate
+        self.isWide = isWide
+        self._selection = selection
+        self._compactDetailPresented = compactDetailPresented
+    }
 
     var body: some View {
         Button {

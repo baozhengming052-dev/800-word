@@ -11,6 +11,7 @@ class ReinforcementAndSortingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.library = (ROOT / "Words800App/WordLibraryView.swift").read_text(encoding="utf-8")
+        cls.adaptive = (ROOT / "Words800App/AdaptiveLayout.swift").read_text(encoding="utf-8")
         cls.error_words = (ROOT / "Words800App/ErrorWordsView.swift").read_text(encoding="utf-8")
         cls.data_manager = (ROOT / "Words800App/DataManager.swift").read_text(encoding="utf-8")
         cls.models = (ROOT / "Words800App/Models.swift").read_text(encoding="utf-8")
@@ -57,6 +58,13 @@ class ReinforcementAndSortingTests(unittest.TestCase):
         self.assertIn("sidebar(displayedWords: displayedWords, wide: wide, compactDetail: compactDetail)", self.error_words)
         self.assertIn("private func controlsSection(displayedWords: [Word])", self.error_words)
         self.assertIn("private func beginPractice(with displayedWords: [Word])", self.error_words)
+
+    def test_error_activity_date_has_explicit_initializers(self):
+        self.assertIn("init(word: Word, errorActivityDate: Date? = nil)", self.library)
+        self.assertIn("errorActivityDate: Date? = nil,", self.adaptive)
+        self.assertIn("self.errorActivityDate = errorActivityDate", self.adaptive)
+        self.assertIn("self._selection = selection", self.adaptive)
+        self.assertIn("self._compactDetailPresented = compactDetailPresented", self.adaptive)
 
 
 if __name__ == "__main__":
