@@ -33,6 +33,7 @@ import CryptoKit
     private var questionsByID: [UUID: Question] = [:]
     private var learningContext = LearningEngine.Context(words: [], questions: [])
     private var activeQuestionsByWordID: [UUID: [Question]] = [:]
+    private var errorWordCache: [ErrorWordSort: [Word]] = [:]
     private var wordIDs = Set<UUID>()
     private var eventIDs = Set<UUID>()
     private var lastEventTimestamp = 0.0
@@ -84,7 +85,7 @@ import CryptoKit
         }
     }
     var activeWords: [Word] { words.filter { !archivedWordIDs.contains($0.id) } }
-    var errorWords: [Word] { sorted(activeWords.filter { getStudyRecord(for: $0.id).errorCount > 0 }, by: .errors) }
+    var errorWords: [Word] { errorWords(sortedBy: .errors) }
     var favoriteWords: [Word] { words.filter { getStudyRecord(for: $0.id).isFavorite } }
     var newWords: [Word] { activeWords.filter { !($0.sourceDeleted) && getStudyRecord(for: $0.id).masteryLevel == .unknown } }
     var dueWords: [Word] {
@@ -112,6 +113,27 @@ import CryptoKit
         case .recent: return list.sorted { getStudyRecord(for: $0.id).lastStudyDate > getStudyRecord(for: $1.id).lastStudyDate }
         }
     }
+    func errorWords(sortedBy sort: ErrorWordSort) -> [Word] {
+        if let cached = errorWordCache[sort] { return cached }
+        let result = activeWords.filter { getStudyRecord(for: $0.id).errorCount > 0 }.sorted { lhs, rhs in
+            let left = getStudyRecord(for: lhs.id), right = getStudyRecord(for: rhs.id)
+            switch sort {
+            case .errors:
+                if left.errorCount != right.errorCount { return left.errorCount > right.errorCount }
+                if left.lastErrorDate != right.lastErrorDate { return left.lastErrorDate > right.lastErrorDate }
+            case .latestError:
+                if left.lastErrorDate != right.lastErrorDate { return left.lastErrorDate > right.lastErrorDate }
+                if left.errorCount != right.errorCount { return left.errorCount > right.errorCount }
+            case .earliestError:
+                if left.lastErrorDate != right.lastErrorDate { return left.lastErrorDate < right.lastErrorDate }
+                if left.errorCount != right.errorCount { return left.errorCount > right.errorCount }
+            }
+            return lhs.word < rhs.word
+        }
+        errorWordCache[sort] = result
+        return result
+    }
+    private func invalidateErrorWordCache() { errorWordCache.removeAll(keepingCapacity: true) }
     private func normalize(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: Locale(identifier: "zh_CN"))
     }
@@ -168,6 +190,7 @@ import CryptoKit
             refreshDailyMetricsIfNeeded(viewState)
             let previousAnswerCount = viewState.answers.count
             LearningEngine.apply(storedEvent, context: learningContext, records: &viewState.records, answers: &viewState.answers)
+            invalidateErrorWordCache()
             if viewState.answers.count > previousAnswerCount, let answer = viewState.answers.last {
                 if answer.isCorrect { viewState.correctAnswerCount += 1 }
                 if Calendar.current.isDate(answer.answeredAt, inSameDayAs: viewState.summaryDay) { viewState.todayAnswerCount += 1 }
@@ -291,6 +314,7 @@ import CryptoKit
             correctAnswerCount: state.answers.lazy.filter(\.isCorrect).count)
         refreshDailyMetricsIfNeeded(viewState)
         learningViewState = viewState
+        invalidateErrorWordCache()
         lastEventTimestamp = snapshot.events.reduce(0) { max($0, $1.timestamp) }
     }
     func question(for event: StudyEvent) -> Question? { event.questionID.flatMap { questionsByID[$0] } }

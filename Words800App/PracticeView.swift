@@ -38,7 +38,10 @@ struct PracticeView: View {
                         .disabled(dataManager.errorWords.isEmpty)
                 }
                 Section("我的题目") {
-                    NavigationLink(destination: PersonalQuestionManager()) { Label("我的题目 · 编辑与归档", systemImage: "square.and.pencil") }
+                    let personalCount = dataManager.personalHeads.values.compactMap(\.last).filter { $0.question != nil && !$0.archived }.count
+                    NavigationLink(destination: PersonalQuestionManager()) {
+                        Label("查看我添加的题目（\(personalCount)）", systemImage: "list.bullet.rectangle")
+                    }
                     Button { addingQuestion = true } label: { Label("添加题目", systemImage: "plus") }
                 }
                 Section("题库说明") {

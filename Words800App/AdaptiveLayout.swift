@@ -133,6 +133,7 @@ struct AdaptiveWordBrowser<Sidebar: View>: View {
 
 struct AdaptiveWordLink: View {
     let word: Word
+    let errorActivityDate: Date? = nil
     let isWide: Bool
     @Binding var selection: UUID?
     @Binding var compactDetailPresented: Bool
@@ -143,7 +144,7 @@ struct AdaptiveWordLink: View {
             if !isWide { compactDetailPresented = true }
         } label: {
             HStack {
-                WordRowView(word: word)
+                WordRowView(word: word, errorActivityDate: errorActivityDate)
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundColor(.secondary)
             }.contentShape(Rectangle())
         }

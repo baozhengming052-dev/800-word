@@ -116,6 +116,7 @@ struct WordLibraryView: View {
 struct WordRowView: View {
     @EnvironmentObject var dataManager: DataManager
     let word: Word
+    let errorActivityDate: Date? = nil
     private var record: StudyRecord { dataManager.getStudyRecord(for: word.id) }
     var body: some View {
         HStack(spacing: 12) {
@@ -128,6 +129,12 @@ struct WordRowView: View {
                 }
                 Text(word.meanings.first ?? "").font(.subheadline).foregroundColor(.secondary).lineLimit(2)
                 Text(word.category + (word.subcategory.isEmpty ? "" : " · " + word.subcategory)).font(.caption2).foregroundColor(.secondary)
+                if let errorActivityDate, errorActivityDate != .distantPast {
+                    HStack(spacing: 4) {
+                        Text("最近错题").font(.caption2)
+                        Text(errorActivityDate, style: .date).font(.caption2)
+                    }.foregroundColor(.secondary)
+                }
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 8) {
@@ -215,8 +222,17 @@ struct WordDetailView: View {
             }
             Section("关联练习") {
                 let related = dataManager.relatedQuestions(for: word.id)
+                let manuallyAdded = related.filter { $0.personalEntryID != nil }.count
                 Text(related.isEmpty ? "暂时没有关联题目，可以手动添加。" : "有 \(related.count) 道使用中的关联题目，可在刷题中练习。")
                     .font(.subheadline).foregroundColor(.secondary)
+                if !related.isEmpty {
+                    NavigationLink {
+                        WordRelatedQuestionsView(word: word)
+                    } label: {
+                        Label(manuallyAdded > 0 ? "查看关联题目（我添加了 \(manuallyAdded) 道）" : "查看关联题目（\(related.count) 道）",
+                              systemImage: "list.bullet.rectangle")
+                    }
+                }
                 Button { openEditor(.addQuestion) } label: { Label("给这个词添加题目", systemImage: "plus.square") }
                     .disabled(dataManager.archivedWordIDs.contains(word.id))
             }
@@ -295,6 +311,55 @@ struct WordUsageSections: View {
                 }
             }
         }
+    }
+}
+struct WordRelatedQuestionsView: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let initialWord: Word
+    @State private var practiceQueue: [Question] = []
+    @State private var showingPractice = false
+    private var word: Word { dataManager.word(for: initialWord.id) ?? initialWord }
+    private var questions: [Question] {
+        dataManager.relatedQuestions(for: word.id).sorted { lhs, rhs in
+            let leftIsManual = lhs.personalEntryID != nil, rightIsManual = rhs.personalEntryID != nil
+            if leftIsManual != rightIsManual { return leftIsManual }
+            return lhs.content < rhs.content
+        }
+    }
+    var body: some View {
+        let displayedQuestions = questions
+        let manuallyAddedCount = displayedQuestions.lazy.filter { $0.personalEntryID != nil }.count
+        List {
+            Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("共 \(displayedQuestions.count) 道关联题").font(.headline)
+                        Text(manuallyAddedCount > 0 ? "其中 \(manuallyAddedCount) 道由你手动添加" : "可先查看题目，也可直接开始作答")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button { practiceQueue = displayedQuestions; showingPractice = true } label: {
+                        Label("开始作答", systemImage: "play.fill")
+                    }.disabled(displayedQuestions.isEmpty)
+                }
+            }
+            Section("题目列表") {
+                ForEach(displayedQuestions) { question in
+                    NavigationLink(destination: QuestionExplanationView(question: question, selectedAnswer: nil)) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(question.content).lineLimit(3)
+                            HStack(spacing: 6) {
+                                Text(question.type.rawValue)
+                                if question.personalEntryID != nil { Text("我添加的") }
+                                if !question.source.isEmpty { Text(question.source).lineLimit(1) }
+                            }.font(.caption).foregroundColor(.secondary)
+                        }.padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .navigationTitle("\(word.word) · 关联题").navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showingPractice) { PracticeSessionView(questions: practiceQueue) }
     }
 }
 struct ErrorCountEditor: View {
@@ -380,6 +445,8 @@ struct StudySessionView: View {
     @State private var revealed = false
     @State private var loaded = false
     @State private var pendingRating: Int?
+    @State private var relatedPracticeQueue: [Question] = []
+    @State private var showingRelatedPractice = false
     private var current: Word? { queue.indices.contains(index) ? queue[index] : nil }
     private var sessionKey: String { "studySession." + title }
     var body: some View {
@@ -405,6 +472,12 @@ struct StudySessionView: View {
                                     if !word.keyPoints.isEmpty { Text(word.keyPoints).foregroundColor(AppStyle.accent).font(.subheadline) }
                                     ForEach(Array(word.examples.enumerated()), id: \.offset) { _, example in
                                         Text(example.sentence).font(.subheadline).padding(14).background(Color(.tertiarySystemFill)).cornerRadius(12)
+                                    }
+                                    if title.contains("巩固") {
+                                        StudyRelatedQuestionsCard(word: word, questions: dataManager.relatedQuestions(for: word.id)) { questions in
+                                            relatedPracticeQueue = questions
+                                            showingRelatedPractice = true
+                                        }
                                     }
                                     NavigationLink("查看辨析、笔记和错误历史", destination: WordDetailView(word: word))
                                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -438,6 +511,7 @@ struct StudySessionView: View {
         }
         .navigationViewStyle(.stack)
         .tint(AppStyle.accent)
+        .fullScreenCover(isPresented: $showingRelatedPractice) { PracticeSessionView(questions: relatedPracticeQueue) }
         .onAppear {
             guard !loaded else { return }; loaded = true
             if title != "提醒巩固", let saved = UserDefaults.standard.dictionary(forKey: sessionKey),
@@ -479,6 +553,37 @@ struct StudySessionView: View {
     private func saveProgress() {
         if index >= queue.count { UserDefaults.standard.removeObject(forKey: sessionKey) }
         else { UserDefaults.standard.set(["ids": queue.map { $0.id.uuidString }, "index": index], forKey: sessionKey) }
+    }
+}
+private struct StudyRelatedQuestionsCard: View {
+    let word: Word
+    let questions: [Question]
+    let startPractice: ([Question]) -> Void
+    var body: some View {
+        if !questions.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("题目巩固", systemImage: "pencil.and.list.clipboard")
+                        .font(.headline).foregroundColor(AppStyle.accent)
+                    Spacer()
+                    Text("关联 \(questions.count) 道").font(.caption).foregroundColor(.secondary)
+                }
+                Text("用题目中的语境确认刚刚看到的释义；作答后才显示答案和解析。")
+                    .font(.caption).foregroundColor(.secondary)
+                Text(questions[0].content).font(.subheadline).lineLimit(3)
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.tertiarySystemFill)).cornerRadius(10)
+                Button { startPractice(questions) } label: {
+                    Label("开始关联题巩固", systemImage: "play.fill").frame(maxWidth: .infinity)
+                }.buttonStyle(.borderedProminent)
+                NavigationLink("查看全部关联题", destination: WordRelatedQuestionsView(word: word))
+                    .font(.subheadline)
+            }
+            .padding(16)
+            .background(AppStyle.accent.opacity(0.08))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppStyle.accent.opacity(0.18)))
+            .cornerRadius(16)
+        }
     }
 }
 private struct StudyRatingButtonStyle: ButtonStyle {

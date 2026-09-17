@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ErrorWordsView: View {
     @EnvironmentObject var dataManager: DataManager
-    @State private var sort: WordSort = .errors
+    @State private var sort: ErrorWordSort = .errors
     @State private var hideMastered = false
     @State private var editWord: Word?
     @State private var cards = false
@@ -10,8 +10,9 @@ struct ErrorWordsView: View {
     @State private var selectedQuestions: [Question] = []
     @State private var selectedWordID: UUID?
     private var words: [Word] {
-        let filtered = dataManager.errorWords.filter { !hideMastered || dataManager.getStudyRecord(for: $0.id).masteryLevel != .mastered }
-        return sort == .errors ? filtered : dataManager.sorted(filtered, by: sort)
+        dataManager.errorWords(sortedBy: sort).filter {
+            !hideMastered || dataManager.getStudyRecord(for: $0.id).masteryLevel != .mastered
+        }
     }
     var body: some View {
         let displayedWords = words
@@ -29,15 +30,15 @@ struct ErrorWordsView: View {
                         } label: { Label("专项刷题", systemImage: "pencil") }.disabled(displayedWords.isEmpty)
                     }.buttonStyle(.borderless)
                     Picker("排序", selection: $sort) {
-                        Text("错误次数最多").tag(WordSort.errors)
-                        Text("最近学习").tag(WordSort.recent)
+                        ForEach(ErrorWordSort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     Toggle("隐藏已掌握词", isOn: $hideMastered)
                 }
                 Section("\(displayedWords.count) 个错词 · 点右侧编辑按钮可修改") {
                     ForEach(displayedWords) { word in
                         HStack {
-                            AdaptiveWordLink(word: word, isWide: wide, selection: $selectedWordID, compactDetailPresented: compactDetail)
+                            AdaptiveWordLink(word: word, errorActivityDate: dataManager.getStudyRecord(for: word.id).lastErrorDate,
+                                             isWide: wide, selection: $selectedWordID, compactDetailPresented: compactDetail)
                             Button { editWord = word } label: { Image(systemName: "square.and.pencil") }
                                 .buttonStyle(.borderless).accessibilityLabel("编辑\(word.word)错误次数")
                         }.listRowBackground(wide && selectedWordID == word.id ? AppStyle.accent.opacity(0.10) : Color(.secondarySystemGroupedBackground))

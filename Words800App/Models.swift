@@ -153,6 +153,11 @@ struct QuestionRecord: Identifiable {
 enum WordSort: String, CaseIterable {
     case original = "资料顺序", errors = "错误次数最多", recent = "最近学习"
 }
+enum ErrorWordSort: String, CaseIterable, Hashable {
+    case errors = "错误次数最多"
+    case latestError = "最近错题（日期）"
+    case earliestError = "最早错题（日期）"
+}
 enum AppStyle {
     static let accent = Color(red: 0.06, green: 0.43, blue: 0.53)
 }

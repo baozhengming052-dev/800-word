@@ -276,21 +276,34 @@ struct PersonalWordSelection: View {
 struct PersonalQuestionManager: View {
     @EnvironmentObject private var dataManager: DataManager
     @State private var archived = false
+    @State private var sort: PersonalQuestionSort = .newest
     @State private var adding = false
     private var entries: [PersonalRevision] {
         dataManager.personalHeads.values.compactMap(\.last)
             .filter { $0.question != nil && $0.archived == archived }
-            .sorted { $0.timestamp > $1.timestamp }
+            .sorted {
+                if $0.timestamp != $1.timestamp {
+                    return sort == .newest ? $0.timestamp > $1.timestamp : $0.timestamp < $1.timestamp
+                }
+                return $0.id.uuidString < $1.id.uuidString
+            }
     }
     var body: some View {
         List {
             Picker("显示", selection: $archived) { Text("使用中").tag(false); Text("已归档").tag(true) }.pickerStyle(.segmented)
+            Picker("排序", selection: $sort) {
+                ForEach(PersonalQuestionSort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
             if entries.isEmpty { Text(archived ? "没有已归档题目。" : "还没有手动题目。点右上角添加。").foregroundColor(.secondary) }
             ForEach(entries) { revision in
                 NavigationLink(destination: PersonalQuestionDetail(entryID: revision.entryID)) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(revision.question?.content ?? "").lineLimit(3)
-                        Text("手动录入 · \(archived ? "已归档" : "使用中")").font(.caption).foregroundColor(.secondary)
+                        HStack(spacing: 6) {
+                            Text("手动录入 · \(archived ? "已归档" : "使用中")")
+                            Text("更新于")
+                            Text(Date(timeIntervalSince1970: revision.timestamp / 1000), style: .date)
+                        }.font(.caption).foregroundColor(.secondary)
                     }
                 }
             }
@@ -299,6 +312,10 @@ struct PersonalQuestionManager: View {
         .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { adding = true } label: { Label("添加题目", systemImage: "plus") } } }
         .sheet(isPresented: $adding) { PersonalQuestionEditor() }
     }
+}
+private enum PersonalQuestionSort: String, CaseIterable {
+    case newest = "最近更新（日期）"
+    case oldest = "最早更新（日期）"
 }
 
 struct PersonalQuestionDetail: View {
