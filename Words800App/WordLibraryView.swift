@@ -156,6 +156,10 @@ struct WordDetailView: View {
     @State private var archiveRequest: PersonalRevision?
     @State private var archiveError = ""
     private var record: StudyRecord { dataManager.getStudyRecord(for: word.id) }
+    private var relatedQuestions: [Question] { dataManager.relatedQuestions(for: word.id) }
+    private var manuallyAddedQuestionCount: Int {
+        relatedQuestions.lazy.filter { $0.personalEntryID != nil }.count
+    }
     var body: some View {
         List {
             Section {
@@ -221,15 +225,13 @@ struct WordDetailView: View {
                 }
             }
             Section("关联练习") {
-                let related = dataManager.relatedQuestions(for: word.id)
-                let manuallyAdded = related.filter { $0.personalEntryID != nil }.count
-                Text(related.isEmpty ? "暂时没有关联题目，可以手动添加。" : "有 \(related.count) 道使用中的关联题目，可在刷题中练习。")
+                Text(relatedQuestions.isEmpty ? "暂时没有关联题目，可以手动添加。" : "有 \(relatedQuestions.count) 道使用中的关联题目，可在刷题中练习。")
                     .font(.subheadline).foregroundColor(.secondary)
-                if !related.isEmpty {
+                if !relatedQuestions.isEmpty {
                     NavigationLink {
                         WordRelatedQuestionsView(word: word)
                     } label: {
-                        Label(manuallyAdded > 0 ? "查看关联题目（我添加了 \(manuallyAdded) 道）" : "查看关联题目（\(related.count) 道）",
+                        Label(manuallyAddedQuestionCount > 0 ? "查看关联题目（我添加了 \(manuallyAddedQuestionCount) 道）" : "查看关联题目（\(relatedQuestions.count) 道）",
                               systemImage: "list.bullet.rectangle")
                     }
                 }
@@ -319,6 +321,7 @@ struct WordRelatedQuestionsView: View {
     @State private var practiceQueue: [Question] = []
     @State private var showingPractice = false
     private var word: Word { dataManager.word(for: initialWord.id) ?? initialWord }
+    init(word: Word) { initialWord = word }
     private var questions: [Question] {
         dataManager.relatedQuestions(for: word.id).sorted { lhs, rhs in
             let leftIsManual = lhs.personalEntryID != nil, rightIsManual = rhs.personalEntryID != nil

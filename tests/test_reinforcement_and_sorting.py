@@ -25,8 +25,9 @@ class ReinforcementAndSortingTests(unittest.TestCase):
         self.assertIn('PracticeSessionView(questions: relatedPracticeQueue)', self.library)
 
     def test_word_detail_has_a_visible_question_list_for_added_questions(self):
-        self.assertIn('Label(manuallyAdded > 0 ? "查看关联题目（我添加了 \\(manuallyAdded) 道）"', self.library)
+        self.assertIn('Label(manuallyAddedQuestionCount > 0 ? "查看关联题目（我添加了 \\(manuallyAddedQuestionCount) 道）"', self.library)
         self.assertIn('struct WordRelatedQuestionsView: View', self.library)
+        self.assertIn('init(word: Word) { initialWord = word }', self.library)
         self.assertIn('manuallyAddedCount > 0 ? "其中 \\(manuallyAddedCount) 道由你手动添加"', self.library)
         self.assertIn('NavigationLink(destination: QuestionExplanationView(question: question, selectedAnswer: nil))', self.library)
         self.assertIn('Label("查看我添加的题目（\\(personalCount)）", systemImage: "list.bullet.rectangle")', self.practice)
@@ -51,6 +52,11 @@ class ReinforcementAndSortingTests(unittest.TestCase):
         self.assertIn("let displayedQuestions = questions", self.library)
         self.assertIn("ForEach(displayedQuestions)", self.library)
         self.assertIn("practiceQueue = displayedQuestions", self.library)
+
+    def test_large_error_word_view_is_split_for_swift_type_checking(self):
+        self.assertIn("sidebar(displayedWords: displayedWords, wide: wide, compactDetail: compactDetail)", self.error_words)
+        self.assertIn("private func controlsSection(displayedWords: [Word])", self.error_words)
+        self.assertIn("private func beginPractice(with displayedWords: [Word])", self.error_words)
 
 
 if __name__ == "__main__":
