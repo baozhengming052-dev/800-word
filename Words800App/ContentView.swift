@@ -4,17 +4,27 @@ import UIKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var dataManager: DataManager
     @State private var selectedTab = 0
     @State private var notificationWords: [Word] = []
     @State private var showNotificationReview = false
+    @State private var showLaunchBranding = true
+    @State private var launchDismissalStarted = false
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView().tabItem { Label("首页", systemImage: "house.fill") }.tag(0)
-            WordLibraryView().tabItem { Label("词库", systemImage: "books.vertical.fill") }.tag(1)
-            PracticeView().tabItem { Label("刷题", systemImage: "square.and.pencil") }.tag(2)
-            ErrorWordsView().tabItem { Label("错词", systemImage: "arrow.triangle.2.circlepath") }.tag(3)
-            ProfileView().tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(4)
+        ZStack {
+            TabView(selection: $selectedTab) {
+                HomeView().tabItem { Label("首页", systemImage: "house.fill") }.tag(0)
+                WordLibraryView().tabItem { Label("词库", systemImage: "books.vertical.fill") }.tag(1)
+                PracticeView().tabItem { Label("刷题", systemImage: "square.and.pencil") }.tag(2)
+                ErrorWordsView().tabItem { Label("错词", systemImage: "arrow.triangle.2.circlepath") }.tag(3)
+                ProfileView().tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(4)
+            }
+            if showLaunchBranding {
+                CollaborationLaunchView()
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
         .tint(AppStyle.accent)
         .onChange(of: selectedTab) { _ in UISelectionFeedbackGenerator().selectionChanged() }
@@ -45,6 +55,228 @@ struct ContentView: View {
         .sheet(isPresented: $showNotificationReview) {
             StudySessionView(title: "提醒巩固", words: notificationWords)
         }
+        .task {
+            guard !launchDismissalStarted else { return }
+            launchDismissalStarted = true
+            try? await Task.sleep(nanoseconds: reduceMotion ? 700_000_000 : 1_650_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: reduceMotion ? 0.12 : 0.32)) {
+                showLaunchBranding = false
+            }
+        }
+    }
+}
+
+private struct CollaborationLaunchView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var logosVisible = false
+    @State private var connectorVisible = false
+    @State private var copyVisible = false
+    @State private var animationStarted = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let isWide = geometry.size.width >= 700
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.10, green: 0.19, blue: 0.41).opacity(0.10),
+                        AppStyle.accent.opacity(0.04),
+                        Color(.systemGroupedBackground)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                VStack(spacing: isWide ? 30 : 24) {
+                    Spacer(minLength: isWide ? 28 : 54)
+
+                    VStack(spacing: 8) {
+                        Text("联合学习项目")
+                            .font(.caption.weight(.semibold))
+                            .tracking(3)
+                            .foregroundColor(.secondary)
+                        Text("湖南工程学院 × 天津商业大学")
+                            .font(.system(size: isWide ? 24 : 18, weight: .semibold, design: .rounded))
+                            .multilineTextAlignment(.center)
+                    }
+                    .opacity(copyVisible ? 1 : 0)
+                    .offset(y: copyVisible ? 0 : 10)
+
+                    CollaborationLogoPair(
+                        isWide: isWide,
+                        logosVisible: logosVisible,
+                        connectorVisible: connectorVisible
+                    )
+
+                    VStack(spacing: 10) {
+                        Capsule()
+                            .fill(AppStyle.accent.opacity(0.35))
+                            .frame(width: 42, height: 3)
+                        Text("政名政利公考800词")
+                            .font(.system(size: isWide ? 31 : 25, weight: .bold, design: .rounded))
+                        Text("把见过的词，变成会用的词。")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .opacity(copyVisible ? 1 : 0)
+                    .offset(y: copyVisible ? 0 : 12)
+
+                    Spacer()
+
+                    HStack(spacing: 7) {
+                        Capsule().frame(width: 26, height: 3)
+                        Capsule().frame(width: 7, height: 3)
+                        Capsule().frame(width: 7, height: 3)
+                    }
+                    .foregroundColor(AppStyle.accent.opacity(0.65))
+                    .opacity(copyVisible ? 1 : 0)
+                    .padding(.bottom, max(24, geometry.safeAreaInsets.bottom + 8))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("湖南工程学院与天津商业大学联合学习项目，政名政利公考800词")
+        .onAppear(perform: startAnimation)
+    }
+
+    private func startAnimation() {
+        guard !animationStarted else { return }
+        animationStarted = true
+        if reduceMotion {
+            logosVisible = true
+            connectorVisible = true
+            copyVisible = true
+            return
+        }
+        withAnimation(.spring(response: 0.62, dampingFraction: 0.82)) {
+            logosVisible = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+            withAnimation(.easeOut(duration: 0.36)) { connectorVisible = true }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.46) {
+            withAnimation(.easeOut(duration: 0.42)) { copyVisible = true }
+        }
+    }
+}
+
+private struct CollaborationLogoPair: View {
+    let isWide: Bool
+    let logosVisible: Bool
+    let connectorVisible: Bool
+
+    var body: some View {
+        HStack(spacing: isWide ? 24 : 12) {
+            logoCard {
+                Image("HNIEBrand")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(maxWidth: isWide ? 220 : 150, maxHeight: isWide ? 62 : 48)
+                    .accessibilityHidden(true)
+            }
+            .offset(x: logosVisible ? 0 : (isWide ? -52 : -34))
+            .opacity(logosVisible ? 1 : 0)
+
+            VStack(spacing: 6) {
+                Text("×")
+                    .font(.system(size: isWide ? 28 : 23, weight: .light, design: .rounded))
+                Capsule()
+                    .fill(AppStyle.accent)
+                    .frame(width: isWide ? 28 : 20, height: 3)
+            }
+            .foregroundColor(AppStyle.accent)
+            .scaleEffect(connectorVisible ? 1 : 0.65)
+            .opacity(connectorVisible ? 1 : 0)
+
+            logoCard {
+                VStack(spacing: 7) {
+                    Image("TJCUBrand")
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: isWide ? 64 : 48, height: isWide ? 64 : 48)
+                        .accessibilityHidden(true)
+                    Text("天津商业大学")
+                        .font(.system(size: isWide ? 15 : 12, weight: .semibold))
+                        .foregroundColor(.black.opacity(0.82))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+            .offset(x: logosVisible ? 0 : (isWide ? 52 : 34))
+            .opacity(logosVisible ? 1 : 0)
+        }
+        .frame(maxWidth: 650)
+        .padding(.horizontal, isWide ? 42 : 20)
+    }
+
+    private func logoCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity)
+            .frame(height: isWide ? 126 : 104)
+            .padding(.horizontal, isWide ? 22 : 12)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: isWide ? 24 : 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: isWide ? 24 : 20, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            }
+            .shadow(color: Color.black.opacity(0.08), radius: 18, y: 8)
+    }
+}
+
+private struct CollaborationHomeMark: View {
+    var body: some View {
+        VStack(spacing: 9) {
+            HStack(spacing: 10) {
+                Image("HNIEBrand")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(maxWidth: 132, maxHeight: 31)
+                    .accessibilityHidden(true)
+                Text("×")
+                    .font(.system(size: 17, weight: .light, design: .rounded))
+                    .foregroundColor(AppStyle.accent)
+                HStack(spacing: 6) {
+                    Image("TJCUBrand")
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: 30, height: 30)
+                        .accessibilityHidden(true)
+                    Text("天津商业大学")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.black.opacity(0.82))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text("联合学习项目")
+                .font(.caption2.weight(.semibold))
+                .tracking(2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AppStyle.accent.opacity(0.10), lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("湖南工程学院与天津商业大学联合学习项目")
     }
 }
 
@@ -64,12 +296,14 @@ struct HomeView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    CollaborationHomeMark()
+                        .padding(.top, 4)
                     VStack(alignment: .leading, spacing: 10) {
                         Text(Date(), style: .date).font(.subheadline).foregroundColor(.secondary)
                         Text("把见过的词，\n变成会用的词。")
                             .font(.system(size: 30, weight: .bold, design: .rounded)).lineSpacing(6)
                         Text("政名政利公考 · 每天一组，反复巩固").font(.subheadline).foregroundColor(.secondary)
-                    }.padding(.top, 8)
+                    }
                     VStack(alignment: .leading, spacing: 16) {
                         HStack(alignment: .firstTextBaseline) {
                             Text("今日学习").font(.headline)
