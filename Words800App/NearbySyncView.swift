@@ -15,7 +15,7 @@ struct NearbySyncView: View {
                     .font(.headline).foregroundColor(AppStyle.accent)
                 Text("无需账号或互联网。两台都打开本页面并开启 Wi-Fi、蓝牙；首次允许“本地网络”。同一 Wi-Fi 下更容易发现，路由器无需连接互联网。")
                     .font(.footnote).foregroundColor(.secondary)
-                Text("两台 App 都需升级到支持 v3 内容的版本。离开页面或切到后台会停止同步。手动词条、题目、收藏、笔记、答题和学习记录会合并；提醒时间、每日目标和未完成练习进度各自保留。")
+                Text("两台 App 都需升级到支持 v3 内容的版本。离开页面或切到后台会停止同步。手动词条、题目、收藏、笔记、近义词、答题和学习记录会合并；提醒时间、每日目标和未完成练习进度各自保留。")
                     .font(.footnote).foregroundColor(.secondary)
             }
             Section("连接状态") {
@@ -88,7 +88,7 @@ struct NearbySyncView: View {
                 }
                 Section("保存前确认") {
                     Text("本机将新增 \(model.incomingCount) 条记录，原有历史全部保留。")
-                    Text("下面列出笔记、错误次数、收藏和掌握程度的变化。答题记录按条合并，复习安排由合并后的学习记录重新计算。")
+                    Text("下面列出笔记、近义词、错误次数、收藏和掌握程度的变化。答题记录按条合并，复习安排由合并后的学习记录重新计算。")
                         .font(.footnote).foregroundColor(.secondary)
                     Button("确认变化并保存到本机") { model.approveProposal() }
                     Button("拒绝此次合并", role: .destructive) { model.cancel() }
@@ -128,14 +128,26 @@ struct SyncConflictSections: View {
     var body: some View {
         ForEach(conflicts) { conflict in
             Section("\(conflict.word) · \(conflict.title)冲突") {
-                Text("本机：" + (conflict.localValue.isEmpty ? "空笔记" : conflict.localValue)).textSelection(.enabled)
-                Text("\(incomingLabel)：" + (conflict.incomingValue.isEmpty ? "空笔记" : conflict.incomingValue)).textSelection(.enabled)
+                Text("本机：" + filled(conflict.localDisplay, conflict)).textSelection(.enabled)
+                Text("\(incomingLabel)：" + filled(conflict.incomingDisplay, conflict)).textSelection(.enabled)
                 choice("保留本机", value: .local, conflict: conflict)
                 choice("保留\(incomingLabel)", value: .incoming, conflict: conflict)
-                if conflict.kind == .note { choice("两份笔记合并", value: .combined, conflict: conflict) }
-                Text(conflict.kind == .note ? "旧笔记仍保留在词条的笔记历史中。" : "选择最终错误总数，不会删除历史错题。两台的总数不会直接相加。")
-                    .font(.footnote).foregroundColor(.secondary)
+                if conflict.kind != .errorCount {
+                    choice(conflict.kind == .note ? "两份笔记合并" : "两份近义词合并", value: .combined, conflict: conflict)
+                }
+                Text(footnote(conflict)).font(.footnote).foregroundColor(.secondary)
             }
+        }
+    }
+    private func filled(_ value: String, _ conflict: SyncConflict) -> String {
+        guard value.isEmpty else { return value }
+        return conflict.kind == .note ? "空笔记" : ""
+    }
+    private func footnote(_ conflict: SyncConflict) -> String {
+        switch conflict.kind {
+        case .note: return "旧笔记仍保留在词条的笔记历史中。"
+        case .synonym: return "合并会保留两份里不重复的近义词；旧内容仍保留在词条的近义词修改历史中。"
+        case .errorCount: return "选择最终错误总数，不会删除历史错题。两台的总数不会直接相加。"
         }
     }
     private func choice(_ title: String, value: SyncChoice, conflict: SyncConflict) -> some View {
@@ -160,7 +172,7 @@ struct BackupMergeView: View {
             List {
                 Section("导入预览") {
                     Text("本机将新增 \(preview.incomingCount) 条学习操作，已有记录和历史会保留。")
-                    Text("收藏、掌握程度和复习安排按事件时间合并。遇到双方修改的笔记和手动次数，需先选择最终内容。")
+                    Text("收藏、掌握程度和复习安排按事件时间合并。遇到双方修改的笔记、近义词和手动次数，需先选择最终内容。")
                         .font(.footnote).foregroundColor(.secondary)
                 }
                 SyncContentSummaryView(summary: preview.contentChanges, otherLabel: "相对备份")

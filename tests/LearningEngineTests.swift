@@ -33,6 +33,19 @@ import Foundation
         assert(record(Array(notes.reversed())).personalNotes == "second", "Chronology is independent of input order")
         assert(record(notes).noteHistory.count == 2, "Both note revisions retained")
         assert(record([event("favorite", "true", 1), event("favorite", "false", 2)]).isFavorite == false, "Unfavorite persists")
+        let firstSynonyms = try PersonalSynonyms.encode([ConfusableWord(word: "一脉相传", difference: "强调一致性")])
+        let moreSynonyms = try PersonalSynonyms.encode([ConfusableWord(word: "一脉相传", difference: "强调一致性"),
+                                                        ConfusableWord(word: "薪火相传", difference: "强调一直存活")])
+        assert(record([event("synonym", firstSynonyms, 5)]).personalSynonyms.first?.word == "一脉相传", "Personal synonyms are stored per word")
+        let expanded = record([event("synonym", firstSynonyms, 5), event("synonym", moreSynonyms, 6)])
+        assert(expanded.personalSynonyms.count == 2 && expanded.synonymHistory.count == 2, "Latest synonym list wins and older revisions stay in history")
+        assert(record(Array([event("synonym", firstSynonyms, 5), event("synonym", moreSynonyms, 6)].reversed())).personalSynonyms.count == 2, "Synonym order is independent of input order")
+        assert(record([event("synonym", "not-json", 7)]).personalSynonyms.isEmpty, "An unreadable synonym payload never breaks other records")
+        let untrimmed = try PersonalSynonyms.encode([ConfusableWord(word: "  一脉相传  ", difference: "  强调一致性  ")])
+        assert(untrimmed == firstSynonyms, "Synonym payloads are stored in one canonical trimmed form")
+        assert(PersonalSynonyms.decoded("[{\"difference\":\"\",\"word\":\" 一脉相传 \"}]") == nil, "Only canonical synonym payloads are accepted")
+        assert(PersonalSynonyms.merged([ConfusableWord(word: "甲", difference: "一")], [ConfusableWord(word: "甲", difference: "二"), ConfusableWord(word: "乙", difference: "三")]).map(\.word) == ["甲", "乙"],
+               "Merging two lists keeps the local entry and appends only new names")
         let sample = StudySnapshot(events: [wrong, correct] + notes)
         let decoded = try JSONDecoder().decode(StudySnapshot.self, from: JSONEncoder().encode(sample))
         assert(sample.events == decoded.events, "Backup is lossless")
@@ -49,7 +62,7 @@ import Foundation
         assert(historical.records[ownWord.entryID]?.errorCount == 1 && historical.records[otherWord.entryID] == nil, "Old answers retain the original UUID association")
         let builtInAnswer = LearningEngine.reduce(words: catalog.words, questions: catalog.questions, events: [wrong])
         assert(builtInAnswer.records[word.id]?.errorCount == 1 && builtInAnswer.records[otherWord.entryID] == nil, "Built-in names never capture personal words")
-        let incrementalEvents = [wrong, correct, event("favorite", "true", 2), event("rating", "0", 3), event("note", "增量笔记", 4)]
+        let incrementalEvents = [wrong, correct, event("favorite", "true", 2), event("rating", "0", 3), event("note", "增量笔记", 4), event("synonym", moreSynonyms, 5)]
         let context = LearningEngine.Context(words: library.words, questions: library.questions)
         var incrementalRecords: [UUID: StudyRecord] = [:]
         var incrementalAnswers: [QuestionRecord] = []
@@ -63,6 +76,8 @@ import Foundation
         assert(incremental.masteryLevel == completeRecord.masteryLevel && incremental.personalNotes == completeRecord.personalNotes)
         assert(incremental.nextReviewDate == completeRecord.nextReviewDate && incrementalAnswers.map(\.id) == complete.answers.map(\.id),
                "Incremental event updates must exactly match a complete history rebuild")
+        assert(incremental.personalSynonyms == completeRecord.personalSynonyms && incremental.synonymHistory.count == completeRecord.synonymHistory.count,
+               "Incremental synonym updates must match a complete history rebuild")
         assert(context.relatedWordIDs(for: question) == [word.id], "Cached question links preserve built-in associations")
         print("PASS: learning rules and revision-specific historical answers/links")
     }

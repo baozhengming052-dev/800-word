@@ -38,3 +38,4 @@ __pycache__/
 *.pyc
 *.ipa
 *学习备份*.json
+.workbuddy-ai/

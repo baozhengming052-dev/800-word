@@ -47,7 +47,7 @@ import Foundation
             var packet = Data([UInt8((n >> 24) & 255), UInt8((n >> 16) & 255), UInt8((n >> 8) & 255), UInt8(n & 255)])
             packet.append(bytes); return packet
         }
-        for (version, schema) in [(1, nil as Int?), (2, nil), (2, 2)] {
+        for (version, schema) in [(1, nil as Int?), (2, nil), (2, 2), (2, 3)] {
             do {
                 _ = try SyncPacket.decode(envelope(version, schema))
                 fatalError("Old or missing content capability must fail before exchange")

@@ -11,9 +11,10 @@ struct SyncPacket {
     private struct Header: Codable { let version: Int; let contentSchemaVersion: Int?; let id: UUID; let kind: Kind; let digest: String?; let reason: String?; let libraryFingerprint: String? }
 
     // Raw payload follows a bounded JSON header; no base64 expansion of a large backup.
+    // 内容能力 4 = v3 快照 + 个人补充近义词事件；旧版会明确要求升级，而不是收到无法解析的记录。
     func encode() throws -> Data {
         try validate()
-        let header = try JSONEncoder().encode(Header(version: 2, contentSchemaVersion: 3, id: id, kind: kind, digest: digest, reason: reason, libraryFingerprint: libraryFingerprint))
+        let header = try JSONEncoder().encode(Header(version: 2, contentSchemaVersion: 4, id: id, kind: kind, digest: digest, reason: reason, libraryFingerprint: libraryFingerprint))
         guard header.count <= 2048 else { throw SyncError.invalid("同步消息头过长。") }
         let length = UInt32(header.count)
         var bytes = Data([UInt8((length >> 24) & 255), UInt8((length >> 16) & 255), UInt8((length >> 8) & 255), UInt8(length & 255)])
@@ -26,7 +27,7 @@ struct SyncPacket {
         let length = data.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
         guard (1...2048).contains(length), data.count >= 4 + length else { throw SyncError.invalid("同步消息不完整。") }
         let header = try JSONDecoder().decode(Header.self, from: data.subdata(in: 4..<(4 + length)))
-        guard header.version == 2, header.contentSchemaVersion == 3 else { throw SyncError.invalid("同步协议或个人内容格式不一致，请更新两台设备的 App。") }
+        guard header.version == 2, header.contentSchemaVersion == 4 else { throw SyncError.invalid("同步协议或个人内容格式不一致，请更新两台设备的 App。") }
         let packet = SyncPacket(id: header.id, kind: header.kind, payload: data.subdata(in: (4 + length)..<data.count), digest: header.digest, reason: header.reason, libraryFingerprint: header.libraryFingerprint)
         try packet.validate()
         return packet

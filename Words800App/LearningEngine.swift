@@ -61,6 +61,7 @@ enum LearningEngine {
                 r.masteryLevel = MasteryLevel(rawValue: e.value) ?? .unknown
                 r.nextReviewDate = e.date.addingTimeInterval(r.masteryLevel == .mastered ? 30 * 86400 : 86400)
             case "note": r.personalNotes = e.value; r.noteHistory.append(e)
+            case "synonym": r.personalSynonyms = PersonalSynonyms.decode(e.value); r.synonymHistory.append(e)
             case "errorAdjustment":
                 let delta = Int(e.value) ?? 0
                 r.errorCount = max(0, r.errorCount + delta); r.errorHistory.append(e)

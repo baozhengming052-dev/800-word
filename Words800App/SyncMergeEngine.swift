@@ -6,15 +6,33 @@ enum SyncError: LocalizedError {
 }
 
 struct SyncConflict: Identifiable {
-    enum Kind { case note, errorCount }
+    enum Kind { case note, errorCount, synonym }
     let wordID: UUID
     let word: String
     let kind: Kind
+    /// 记录里的原始载荷；近义词是规范 JSON，界面用下面的显示属性转成可读文字。
     let localValue: String
     let incomingValue: String
     let mergedValue: String
-    var id: String { wordID.uuidString + (kind == .note ? ".note" : ".errors") }
-    var title: String { kind == .note ? "笔记" : "错误次数" }
+    var id: String {
+        switch kind {
+        case .note: return wordID.uuidString + ".note"
+        case .errorCount: return wordID.uuidString + ".errors"
+        case .synonym: return wordID.uuidString + ".synonym"
+        }
+    }
+    var title: String {
+        switch kind {
+        case .note: return "笔记"
+        case .errorCount: return "错误次数"
+        case .synonym: return "近义词"
+        }
+    }
+    var localDisplay: String { display(localValue) }
+    var incomingDisplay: String { display(incomingValue) }
+    private func display(_ value: String) -> String {
+        kind == .synonym ? PersonalSynonyms.displayText(value) : value
+    }
 }
 
 enum SyncChoice: String, CaseIterable { case local, incoming, combined }
@@ -195,11 +213,12 @@ enum SyncMergeEngine {
         let qByID = Dictionary(uniqueKeysWithValues: questions.map { ($0.id, $0) })
         let learningContext = LearningEngine.Context(words: words, questions: questions)
         var linksByQuestionID: [UUID: [UUID]] = [:]
-        func edits(_ events: [StudyEvent]) -> (notes: Set<UUID>, manual: Set<UUID>, errors: Set<UUID>) {
-            var notes = Set<UUID>(), manual = Set<UUID>(), errors = Set<UUID>()
+        func edits(_ events: [StudyEvent]) -> (notes: Set<UUID>, manual: Set<UUID>, errors: Set<UUID>, synonyms: Set<UUID>) {
+            var notes = Set<UUID>(), manual = Set<UUID>(), errors = Set<UUID>(), synonyms = Set<UUID>()
             for event in events {
                 if let id = event.wordID {
                     if event.kind == "note" { notes.insert(id) }
+                    if event.kind == "synonym" { synonyms.insert(id) }
                     if event.kind == "errorAdjustment" { manual.insert(id); errors.insert(id) }
                     if event.kind == "rating" && event.value == "0" { errors.insert(id) }
                 }
@@ -211,7 +230,7 @@ enum SyncMergeEngine {
                     errors.formUnion(linksByQuestionID[qid] ?? [])
                 }
             }
-            return (notes, manual, errors)
+            return (notes, manual, errors, synonyms)
         }
         let a = edits(localOnly), b = edits(remoteOnly)
         var conflicts: [SyncConflict] = []
@@ -226,6 +245,13 @@ enum SyncMergeEngine {
             if (a.manual.contains(id) && b.errors.contains(id)) || (b.manual.contains(id) && a.errors.contains(id)) {
                 conflicts.append(SyncConflict(wordID: id, word: word.word, kind: .errorCount,
                     localValue: String(l.errorCount), incomingValue: String(r.errorCount), mergedValue: String(m.errorCount)))
+            }
+            // 两台各自补充了不同的近义词：必须选一份或合并，不能按时钟静默丢掉一边。
+            if a.synonyms.contains(id) && b.synonyms.contains(id), l.personalSynonyms != r.personalSynonyms {
+                conflicts.append(SyncConflict(wordID: id, word: word.word, kind: .synonym,
+                    localValue: (try? PersonalSynonyms.encode(l.personalSynonyms)) ?? "[]",
+                    incomingValue: (try? PersonalSynonyms.encode(r.personalSynonyms)) ?? "[]",
+                    mergedValue: (try? PersonalSynonyms.encode(m.personalSynonyms)) ?? "[]"))
             }
         }
         return conflicts
@@ -268,6 +294,21 @@ enum SyncMergeEngine {
         var stamp = max(now, (result.events.map { $0.timestamp }.max() ?? 0) + 1)
         for conflict in preview.conflicts {
             guard let choice = choices[conflict.id] else { throw SyncError.invalid("请先处理所有冲突，再确认合并。") }
+            // 近义词以整份列表保存，选择后写入一条新事件；旧内容仍留在修改历史里。
+            if conflict.kind == .synonym {
+                let local = PersonalSynonyms.decode(conflict.localValue)
+                let incoming = PersonalSynonyms.decode(conflict.incomingValue)
+                let chosen: [ConfusableWord]
+                switch choice {
+                case .local: chosen = local
+                case .incoming: chosen = incoming
+                case .combined: chosen = PersonalSynonyms.merged(local, incoming)
+                }
+                result.events.append(StudyEvent(wordID: conflict.wordID, kind: "synonym",
+                    value: try PersonalSynonyms.encode(chosen), timestamp: stamp))
+                stamp += 1
+                continue
+            }
             let value: String
             switch choice {
             case .local: value = conflict.localValue

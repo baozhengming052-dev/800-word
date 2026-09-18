@@ -201,7 +201,7 @@ struct WordDetailView: View {
                     }
                 }
             }
-            WordUsageSections(word: word)
+            WordUsageSections(word: word, record: record, onEditSynonyms: { openEditor(.synonyms) })
             Section("我的学习") {
                 Picker("掌握程度", selection: Binding(get: { record.masteryLevel }, set: { dataManager.updateMasteryLevel(for: word.id, level: $0) })) {
                     ForEach(MasteryLevel.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -295,17 +295,55 @@ struct WordMeaningSection: View {
 struct WordUsageSections: View {
     @EnvironmentObject var dataManager: DataManager
     let word: Word
+    /// 当前学习记录里的补充近义词，和内置「关联词辨析」分开显示，互不覆盖。
+    var record = StudyRecord()
+    var onEditSynonyms: (() -> Void)? = nil
+    private var synonyms: [ConfusableWord] { record.personalSynonyms }
     var body: some View {
         if !word.keyPoints.isEmpty { Section(word.isPersonal ? "用法与重点 · 手动添加" : "重点解析 · 原资料用法提示") { Text(word.keyPoints).lineSpacing(6) } }
         if !word.confusableWords.isEmpty {
             Section("关联词与辨析") {
                 ForEach(Array(word.confusableWords.enumerated()), id: \.offset) { _, item in
                     VStack(alignment: .leading, spacing: 8) {
-                        if let related = dataManager.words.first(where: { !$0.isPersonal && $0.word == item.word }) {
+                        if let related = relatedWord(named: item.word, includePersonal: false) {
                             NavigationLink(item.word, destination: WordDetailView(word: related)).font(.headline)
                         } else { Text(item.word).font(.headline) }
                         Text(item.difference).font(.subheadline).foregroundColor(.secondary).lineSpacing(4)
                     }.padding(.vertical, 4)
+                }
+            }
+        }
+        Section("近义词 · 我的补充") {
+            if synonyms.isEmpty {
+                Text(word.confusableWords.isEmpty
+                     ? "这个词原资料没有近义词。可以自己补充意思相近的词和区别，只保存在本机记录里。"
+                     : "原资料的近义词在上方，这里可以继续补充你自己的。")
+                    .font(.subheadline).foregroundColor(.secondary)
+            } else {
+                ForEach(Array(synonyms.enumerated()), id: \.offset) { _, item in
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let related = relatedWord(named: item.word, includePersonal: true) {
+                            NavigationLink(item.word, destination: WordDetailView(word: related)).font(.headline)
+                        } else { Text(item.word).font(.headline) }
+                        if !item.difference.isEmpty {
+                            Text(item.difference).font(.subheadline).foregroundColor(.secondary).lineSpacing(4)
+                        }
+                    }.padding(.vertical, 4)
+                }
+            }
+            if let onEditSynonyms = onEditSynonyms {
+                Button(action: onEditSynonyms) {
+                    Label(synonyms.isEmpty ? "添加近义词" : "编辑补充的近义词", systemImage: "text.badge.plus")
+                }
+            }
+            if record.synonymHistory.count > 1 {
+                DisclosureGroup("近义词修改历史（\(record.synonymHistory.count)）") {
+                    ForEach(record.synonymHistory.reversed()) { event in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(event.date, style: .date).font(.caption).foregroundColor(.secondary)
+                            Text(PersonalSynonyms.displayText(event.value)).font(.subheadline).textSelection(.enabled)
+                        }
+                    }
                 }
             }
         }
@@ -319,6 +357,12 @@ struct WordUsageSections: View {
                 }
             }
         }
+    }
+    /// 内置词优先，避免同名个人词条截获原资料里的关联词。
+    private func relatedWord(named name: String, includePersonal: Bool) -> Word? {
+        if let builtIn = dataManager.words.first(where: { !$0.isPersonal && $0.word == name }) { return builtIn }
+        guard includePersonal else { return nil }
+        return dataManager.words.first { $0.word == name }
     }
 }
 struct WordRelatedQuestionsView: View {
@@ -428,6 +472,115 @@ struct NotesEditorView: View {
                     loadedDraft = true
                 }
         }.navigationViewStyle(.stack)
+    }
+}
+
+struct SynonymEditorView: View {
+    @EnvironmentObject var dataManager: DataManager
+    @Environment(\.dismiss) private var dismiss
+    let word: Word
+    @State private var items: [ConfusableWord] = []
+    @State private var name = ""
+    @State private var difference = ""
+    @State private var editingIndex: Int?
+    @State private var errorMessage = ""
+    @State private var loadedDraft = false
+    private var trimmedName: String { PersonalLibrary.trimmed(name) }
+    private var repeatsBuiltIn: Bool {
+        let key = PersonalLibrary.normalizedName(trimmedName)
+        return !key.isEmpty && word.confusableWords.contains { PersonalLibrary.normalizedName($0.word) == key }
+    }
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("近义词") {
+                    TextField("例如：一脉相传", text: $name)
+                    if repeatsBuiltIn {
+                        Text("原资料的关联词里已经有这个词；保存后会保留你的区别说明，原内容不变。")
+                            .font(.footnote).foregroundColor(.secondary)
+                    }
+                }
+                Section("区别说明（可留空）") {
+                    TextEditor(text: $difference).frame(minHeight: 90)
+                }
+                Section {
+                    Button(editingIndex == nil ? "添加到列表" : "更新这一条") { _ = stage() }
+                        .disabled(trimmedName.isEmpty)
+                    if editingIndex != nil { Button("取消编辑这一条") { resetFields() } }
+                    if !errorMessage.isEmpty { Text(errorMessage).foregroundColor(.red) }
+                }
+                if !items.isEmpty {
+                    Section("已补充 \(items.count) 条") {
+                        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            Button { load(index) } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: 6) {
+                                        Text(item.word).foregroundColor(.primary)
+                                        if editingIndex == index { Image(systemName: "pencil").font(.caption).foregroundColor(AppStyle.accent) }
+                                        Spacer()
+                                    }
+                                    if !item.difference.isEmpty {
+                                        Text(item.difference).font(.caption).foregroundColor(.secondary).lineLimit(3)
+                                    }
+                                }
+                            }
+                        }.onDelete(perform: remove)
+                    }
+                }
+                Section {
+                    Text("近义词按词条保存在本机学习记录里，会随备份和附近同步一起传到另一台设备；修改历史不会被删除。原资料的关联词辨析始终按原文显示。")
+                        .font(.footnote).foregroundColor(.secondary)
+                }
+            }
+            .navigationTitle("\(word.word) · 近义词").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("保存") { save() } }
+            }
+            .onAppear {
+                guard !loadedDraft else { return }
+                items = dataManager.getStudyRecord(for: word.id).personalSynonyms
+                loadedDraft = true
+            }
+        }.navigationViewStyle(.stack)
+    }
+    @discardableResult private func stage() -> Bool {
+        let entry = ConfusableWord(word: trimmedName, difference: PersonalLibrary.trimmed(difference))
+        guard !entry.word.isEmpty else { errorMessage = "请填写近义词。"; return false }
+        guard entry.word.count <= PersonalSynonyms.maximumNameLength else {
+            errorMessage = "近义词最多 \(PersonalSynonyms.maximumNameLength) 个字。"; return false
+        }
+        guard entry.difference.count <= PersonalSynonyms.maximumDifferenceLength else {
+            errorMessage = "区别说明超过长度限制，请精简后再保存。"; return false
+        }
+        guard PersonalLibrary.normalizedName(entry.word) != PersonalLibrary.normalizedName(word.word) else {
+            errorMessage = "“\(word.word)”是词条本身，不能作为它的近义词。"; return false
+        }
+        var value = items
+        if let editing = editingIndex, value.indices.contains(editing) { value.remove(at: editing) }
+        let key = PersonalLibrary.normalizedName(entry.word)
+        if let index = value.firstIndex(where: { PersonalLibrary.normalizedName($0.word) == key }) { value[index] = entry }
+        else { value.append(entry) }
+        guard value.count <= PersonalSynonyms.maximumEntries else {
+            errorMessage = "最多补充 \(PersonalSynonyms.maximumEntries) 条近义词。"; return false
+        }
+        items = value; errorMessage = ""; resetFields()
+        return true
+    }
+    private func load(_ index: Int) {
+        guard items.indices.contains(index) else { return }
+        name = items[index].word; difference = items[index].difference
+        editingIndex = index; errorMessage = ""
+    }
+    private func remove(_ offsets: IndexSet) {
+        items.remove(atOffsets: offsets); errorMessage = ""; resetFields()
+    }
+    private func resetFields() { name = ""; difference = ""; editingIndex = nil }
+    private func save() {
+        // 直接点保存时，把还没加入列表的那一条一起写入，避免输入内容被静默丢掉。
+        if !trimmedName.isEmpty, !stage() { return }
+        do { try dataManager.updateSynonyms(for: word.id, synonyms: items); dismiss() }
+        catch { errorMessage = error.localizedDescription }
     }
 }
 

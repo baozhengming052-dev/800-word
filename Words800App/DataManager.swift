@@ -211,7 +211,7 @@ import CryptoKit
               !eventIDs.contains(event.id), event.timestamp.isFinite, event.timestamp >= 0,
               event.timestamp <= Date().timeIntervalSince1970 * 1000 + 86_400_000,
               event.value.utf8.count <= 100_000 else { return false }
-        let kinds = Set(["answer", "favorite", "mastery", "note", "errorAdjustment", "review", "rating"])
+        let kinds = Set(["answer", "favorite", "mastery", "note", "synonym", "errorAdjustment", "review", "rating"])
         guard kinds.contains(event.kind) else { return false }
         if let id = event.wordID, !wordIDs.contains(id) { return false }
         if let id = event.questionID, questionsByID[id] == nil { return false }
@@ -224,6 +224,7 @@ import CryptoKit
         case "favorite": return ["true", "false"].contains(event.value)
         case "mastery": return MasteryLevel(rawValue: event.value) != nil
         case "rating": return ["0", "1", "2"].contains(event.value)
+        case "synonym": return PersonalSynonyms.isValid(event.value)
         default: return true
         }
     }
@@ -250,6 +251,15 @@ import CryptoKit
     @discardableResult func updateNotes(for id: UUID, notes: String) -> Bool {
         guard notes != getStudyRecord(for: id).personalNotes else { return true }
         return append(StudyEvent(wordID: id, kind: "note", value: notes))
+    }
+    /// 补充近义词按整份列表保存，和笔记一样只增量写一条事件，不重建词库、搜索索引和题目目录。
+    func updateSynonyms(for id: UUID, synonyms: [ConfusableWord]) throws {
+        let value = PersonalSynonyms.normalize(synonyms)
+        guard value != getStudyRecord(for: id).personalSynonyms else { return }
+        let payload = try PersonalSynonyms.encode(value)
+        guard append(StudyEvent(wordID: id, kind: "synonym", value: payload)) else {
+            throw AppError.text(message.isEmpty ? "近义词未能保存，请重试。" : message)
+        }
     }
     @discardableResult func setErrorCount(for id: UUID, count: Int) -> Bool {
         // Record the correction itself so manually editing a total never erases past questions.

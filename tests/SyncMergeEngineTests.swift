@@ -45,6 +45,29 @@ import Foundation
         let oneSided = try plan([baseNote, localNote], [baseNote, a])
         assert(oneSided.conflicts.isEmpty && state(oneSided.merged).personalNotes == "手机笔记", "Unrelated remote answers do not cause note conflicts")
 
+        let baseSynonym = event("synonym", try PersonalSynonyms.encode([ConfusableWord(word: "源远", difference: "只强调时间长")]), 60)
+        let localSynonym = event("synonym", try PersonalSynonyms.encode([ConfusableWord(word: "源远", difference: "只强调时间长"),
+                                                                         ConfusableWord(word: "源源不断", difference: "强调连续")]), 62)
+        let remoteSynonym = event("synonym", try PersonalSynonyms.encode([ConfusableWord(word: "源远", difference: "只强调时间长"),
+                                                                          ConfusableWord(word: "绵延", difference: "强调延续")]), 61)
+        let synonyms = try plan([baseSynonym, localSynonym], [baseSynonym, remoteSynonym])
+        assert(synonyms.conflicts.count == 1 && synonyms.conflicts[0].kind == .synonym, "Concurrent synonyms require explicit choice, not clock overwrite")
+        assert(synonyms.conflicts[0].localDisplay.contains("源源不断") && !synonyms.conflicts[0].localDisplay.contains("{"), "Synonym conflicts are shown as readable text")
+        let keptLocal = try SyncMergeEngine.resolve(synonyms, choices: [synonyms.conflicts[0].id: .local], now: t + 30)
+        assert(state(keptLocal).personalSynonyms.map(\.word) == ["源远", "源源不断"], "Keeping the local list drops nothing of its own")
+        let synonymJoined = try SyncMergeEngine.resolve(synonyms, choices: [synonyms.conflicts[0].id: .combined], now: t + 30)
+        assert(state(synonymJoined).personalSynonyms.map(\.word) == ["源远", "源源不断", "绵延"], "Combined synonyms keep both sides without duplicates")
+        assert(state(synonymJoined).synonymHistory.count == 4, "Resolution preserves every synonym revision")
+        let cleared = try plan([baseSynonym, localSynonym], [baseSynonym, remoteSynonym, event("synonym", "[]", 63)])
+        assert(cleared.conflicts.count == 1, "Clearing one side is still a decision")
+        let clearedResolved = try SyncMergeEngine.resolve(cleared, choices: [cleared.conflicts[0].id: .incoming], now: t + 30)
+        assert(state(clearedResolved).personalSynonyms.isEmpty, "An explicit empty list is a valid final state")
+        let oneSidedSynonym = try plan([baseSynonym, localSynonym], [baseSynonym, a])
+        assert(oneSidedSynonym.conflicts.isEmpty && state(oneSidedSynonym.merged).personalSynonyms.count == 2, "One-sided synonym edits merge without a prompt")
+        rejects("A non-canonical synonym payload cannot enter the record") {
+            _ = try plan([event("synonym", "[{\"difference\":\"\",\"word\":\" 源远 \"}]", 70)], [])
+        }
+
         let baseCount = event("errorAdjustment", "5", 20)
         let leftReset = event("errorAdjustment", "-5", 22)
         let rightIncrease = event("errorAdjustment", "2", 23)

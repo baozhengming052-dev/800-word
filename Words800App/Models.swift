@@ -135,6 +135,9 @@ struct StudyRecord {
     var masteryLevel: MasteryLevel = .unknown
     var personalNotes = ""
     var noteHistory: [StudyEvent] = []
+    /// 自己补充的近义词：与内置「关联词辨析」同结构（词 + 区别说明），默认没有。
+    var personalSynonyms: [ConfusableWord] = []
+    var synonymHistory: [StudyEvent] = []
     var errorHistory: [StudyEvent] = []
     var lastStudyDate: Date = .distantPast
     var lastErrorDate: Date = .distantPast
@@ -149,6 +152,71 @@ struct QuestionRecord: Identifiable {
     let isCorrect: Bool
     let selectedAnswer: Int
     let answeredAt: Date
+}
+
+/// 个人补充的近义词，保存在 `kind = "synonym"` 的学习事件里。整份列表作为一条不可变事件保存，
+/// 沿用笔记的「最新一条生效、历史全部保留」规则，因此备份格式、附近同步和冲突选择都不需要新增数据格式；快照仍是 v3。
+enum PersonalSynonyms {
+    static let maximumEntries = 200
+    static let maximumNameLength = 80
+    static let maximumDifferenceLength = 10_000
+    static let maximumBytes = 100_000
+
+    /// 去空格、丢掉空名字和超长内容，并按词语去重（后写的覆盖先写的，位置不变）。
+    static func normalize(_ items: [ConfusableWord]) -> [ConfusableWord] {
+        var result: [ConfusableWord] = []
+        for item in items {
+            let name = PersonalLibrary.trimmed(item.word)
+            let difference = PersonalLibrary.trimmed(item.difference)
+            guard !name.isEmpty, name.count <= maximumNameLength, difference.count <= maximumDifferenceLength else { continue }
+            let entry = ConfusableWord(word: name, difference: difference)
+            if let index = result.firstIndex(where: { PersonalLibrary.normalizedName($0.word) == PersonalLibrary.normalizedName(name) }) {
+                result[index] = entry
+            } else { result.append(entry) }
+        }
+        return result
+    }
+
+    /// 稳定编码（键排序）：同一份列表在两台设备上产生完全相同的字节，便于去重和冲突比较。
+    static func encode(_ items: [ConfusableWord]) throws -> String {
+        let value = normalize(items)
+        guard value.count <= maximumEntries else { throw PersonalLibraryError.invalid("补充的近义词最多 \(maximumEntries) 条。") }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(value)
+        guard let text = String(data: data, encoding: .utf8), text.utf8.count <= maximumBytes else {
+            throw PersonalLibraryError.invalid("补充的近义词内容过长，请精简区别说明。")
+        }
+        return text
+    }
+
+    /// 只接受本 App 写出的规范载荷，避免未整理过的内容进入记录和同步。
+    static func decoded(_ value: String) -> [ConfusableWord]? {
+        guard value.utf8.count <= maximumBytes,
+              let items = try? JSONDecoder().decode([ConfusableWord].self, from: Data(value.utf8)),
+              let canonical = try? encode(items), canonical == value else { return nil }
+        return items
+    }
+    static func isValid(_ value: String) -> Bool { decoded(value) != nil }
+    /// 归约用：历史记录即使无法解析也不影响其他学习数据。
+    static func decode(_ value: String) -> [ConfusableWord] { decoded(value) ?? [] }
+
+    /// 两台都改过时把两份列表按词语合并：本机顺序在前，只补充对方独有的条目。
+    static func merged(_ local: [ConfusableWord], _ incoming: [ConfusableWord]) -> [ConfusableWord] {
+        var result = normalize(local)
+        var seen = Set(result.map { PersonalLibrary.normalizedName($0.word) })
+        for item in normalize(incoming) where seen.insert(PersonalLibrary.normalizedName(item.word)).inserted {
+            result.append(item)
+        }
+        return result
+    }
+
+    static func summary(_ items: [ConfusableWord]) -> String {
+        guard !items.isEmpty else { return "（没有补充近义词）" }
+        return items.map { $0.difference.isEmpty ? $0.word : "\($0.word)：\($0.difference)" }.joined(separator: "\n")
+    }
+    /// 冲突选择界面显示用：把记录里的规范载荷转成可读文字。
+    static func displayText(_ value: String) -> String { summary(decode(value)) }
 }
 enum WordSort: String, CaseIterable {
     case original = "资料顺序", errors = "错误次数最多", recent = "最近学习"

@@ -216,6 +216,9 @@ struct SyncChange: Identifiable {
                 details.append("原笔记：" + (left.personalNotes.isEmpty ? "空" : left.personalNotes))
                 details.append("合并后：" + (right.personalNotes.isEmpty ? "空" : right.personalNotes))
             }
+            if left.personalSynonyms != right.personalSynonyms {
+                details.append("补充近义词：\(left.personalSynonyms.count) 条 → \(right.personalSynonyms.count) 条")
+            }
             if left.isFavorite != right.isFavorite { details.append(right.isFavorite ? "加入收藏" : "取消收藏") }
             if left.masteryLevel != right.masteryLevel { details.append("掌握程度：\(left.masteryLevel.rawValue) → \(right.masteryLevel.rawValue)") }
             return details.isEmpty ? nil : SyncChange(id: word.id, word: word.word, details: details)

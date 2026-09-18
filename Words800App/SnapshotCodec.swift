@@ -27,7 +27,7 @@ enum SnapshotCodec {
         for question in catalog.questions {
             guard questionByID.updateValue(question, forKey: question.id) == nil else { throw PersonalLibraryError.invalid("题目编号重复。") }
         }
-        let kinds = Set(["answer", "favorite", "mastery", "note", "errorAdjustment", "review", "rating"])
+        let kinds = Set(["answer", "favorite", "mastery", "note", "synonym", "errorAdjustment", "review", "rating"])
         var seen = Set<UUID>()
         for event in snapshot.events {
             guard seen.insert(event.id).inserted, kinds.contains(event.kind), event.timestamp.isFinite,
@@ -50,6 +50,8 @@ enum SnapshotCodec {
                 guard MasteryLevel(rawValue: event.value) != nil else { throw PersonalLibraryError.invalid("无效的掌握程度。") }
             case "rating":
                 guard ["0", "1", "2"].contains(event.value) else { throw PersonalLibraryError.invalid("无效的学习反馈。") }
+            case "synonym":
+                guard PersonalSynonyms.isValid(event.value) else { throw PersonalLibraryError.invalid("无效的近义词补充记录。") }
             default: break
             }
         }

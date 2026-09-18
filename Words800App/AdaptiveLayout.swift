@@ -20,7 +20,7 @@ struct ResponsivePressButtonStyle: ButtonStyle {
     }
 }
 
-enum WordEditorKind { case notes, errors, source, personalWord, addQuestion }
+enum WordEditorKind { case notes, errors, source, personalWord, addQuestion, synonyms }
 
 struct WordEditorRequest: Identifiable {
     let id = UUID()
@@ -49,6 +49,7 @@ struct WordEditorSheet: View {
         case .source: SourcePDFView(page: request.word.occurrences.first?.page ?? 1)
         case .personalWord: PersonalWordEditor(wordID: request.word.id)
         case .addQuestion: PersonalQuestionEditor(relatedWordIDs: [request.word.id])
+        case .synonyms: SynonymEditorView(word: request.word)
         }
     }
 }
