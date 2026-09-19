@@ -171,16 +171,14 @@ private struct CollaborationLogoPair: View {
 
     var body: some View {
         HStack(spacing: isWide ? 24 : 12) {
-            logoCard {
-                Image("HNIEBrand")
-                    .resizable()
-                    .renderingMode(.original)
-                    .scaledToFit()
-                    .frame(maxWidth: isWide ? 220 : 150, maxHeight: isWide ? 62 : 48)
-                    .accessibilityHidden(true)
-            }
-            .offset(x: logosVisible ? 0 : (isWide ? -52 : -34))
-            .opacity(logosVisible ? 1 : 0)
+            Image("HNIEBrand")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(maxWidth: isWide ? 230 : 132, maxHeight: isWide ? 72 : 52)
+                .accessibilityHidden(true)
+                .offset(x: logosVisible ? 0 : (isWide ? -52 : -34))
+                .opacity(logosVisible ? 1 : 0)
 
             VStack(spacing: 6) {
                 Text("×")
@@ -193,40 +191,18 @@ private struct CollaborationLogoPair: View {
             .scaleEffect(connectorVisible ? 1 : 0.65)
             .opacity(connectorVisible ? 1 : 0)
 
-            logoCard {
-                VStack(spacing: 7) {
-                    Image("TJCUBrand")
-                        .resizable()
-                        .renderingMode(.original)
-                        .scaledToFit()
-                        .frame(width: isWide ? 64 : 48, height: isWide ? 64 : 48)
-                        .accessibilityHidden(true)
-                    Text("天津商业大学")
-                        .font(.system(size: isWide ? 15 : 12, weight: .semibold))
-                        .foregroundColor(.black.opacity(0.82))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-            }
-            .offset(x: logosVisible ? 0 : (isWide ? 52 : 34))
-            .opacity(logosVisible ? 1 : 0)
+            Image("TJCUBrand")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(maxWidth: isWide ? 278 : 164, maxHeight: isWide ? 82 : 54)
+                .accessibilityHidden(true)
+                .offset(x: logosVisible ? 0 : (isWide ? 52 : 34))
+                .opacity(logosVisible ? 1 : 0)
         }
         .frame(maxWidth: 650)
         .padding(.horizontal, isWide ? 42 : 20)
-    }
-
-    private func logoCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .frame(maxWidth: .infinity)
-            .frame(height: isWide ? 126 : 104)
-            .padding(.horizontal, isWide ? 22 : 12)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: isWide ? 24 : 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: isWide ? 24 : 20, style: .continuous)
-                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
-            }
-            .shadow(color: Color.black.opacity(0.08), radius: 18, y: 8)
+        .frame(height: isWide ? 112 : 82)
     }
 }
 
@@ -238,24 +214,17 @@ private struct CollaborationHomeMark: View {
                     .resizable()
                     .renderingMode(.original)
                     .scaledToFit()
-                    .frame(maxWidth: 132, maxHeight: 31)
+                    .frame(maxWidth: 128, maxHeight: 36)
                     .accessibilityHidden(true)
                 Text("×")
                     .font(.system(size: 17, weight: .light, design: .rounded))
                     .foregroundColor(AppStyle.accent)
-                HStack(spacing: 6) {
-                    Image("TJCUBrand")
-                        .resizable()
-                        .renderingMode(.original)
-                        .scaledToFit()
-                        .frame(width: 30, height: 30)
-                        .accessibilityHidden(true)
-                    Text("天津商业大学")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.black.opacity(0.82))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
+                Image("TJCUBrand")
+                    .resizable()
+                    .renderingMode(.original)
+                    .scaledToFit()
+                    .frame(maxWidth: 154, maxHeight: 42)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

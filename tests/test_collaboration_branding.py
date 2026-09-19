@@ -35,12 +35,18 @@ class CollaborationBrandingTests(unittest.TestCase):
         self.assertIn('Image("TJCUBrand")', self.content_view)
         self.assertIn("showLaunchBranding = false", self.content_view)
         self.assertIn("accessibilityReduceMotion", self.content_view)
+        self.assertNotIn("private func logoCard", self.content_view)
 
     def test_home_has_a_compact_accessible_joint_mark(self):
         self.assertIn("struct CollaborationHomeMark: View", self.content_view)
         self.assertIn("CollaborationHomeMark()", self.content_view)
         self.assertIn("湖南工程学院 × 天津商业大学", self.content_view)
         self.assertIn("湖南工程学院与天津商业大学联合学习项目", self.content_view)
+
+    def test_tjcu_asset_is_the_wide_name_lockup(self):
+        svg = (self.assets / "TJCUBrand.imageset/tjcu-brand.svg").read_text(encoding="utf-8")
+        self.assertIn('viewBox="2800 10250 17400 4750"', svg)
+        self.assertNotIn('width="889.357666015625"', svg)
 
 
 if __name__ == "__main__":
