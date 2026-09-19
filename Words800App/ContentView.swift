@@ -93,15 +93,10 @@ private struct CollaborationLaunchView: View {
                 VStack(spacing: isWide ? 30 : 24) {
                     Spacer(minLength: isWide ? 28 : 54)
 
-                    VStack(spacing: 8) {
-                        Text("联合学习项目")
-                            .font(.caption.weight(.semibold))
-                            .tracking(3)
-                            .foregroundColor(.secondary)
-                        Text("湖南工程学院 × 天津商业大学")
-                            .font(.system(size: isWide ? 24 : 18, weight: .semibold, design: .rounded))
-                            .multilineTextAlignment(.center)
-                    }
+                    Text("联合学习项目")
+                        .font(.caption.weight(.semibold))
+                        .tracking(3)
+                        .foregroundColor(.secondary)
                     .opacity(copyVisible ? 1 : 0)
                     .offset(y: copyVisible ? 0 : 10)
 
@@ -175,7 +170,7 @@ private struct CollaborationLogoPair: View {
                 .resizable()
                 .renderingMode(.original)
                 .scaledToFit()
-                .frame(maxWidth: isWide ? 230 : 132, maxHeight: isWide ? 72 : 52)
+                .frame(width: isWide ? 270 : 160, height: isWide ? 82 : 56)
                 .accessibilityHidden(true)
                 .offset(x: logosVisible ? 0 : (isWide ? -52 : -34))
                 .opacity(logosVisible ? 1 : 0)
@@ -195,7 +190,7 @@ private struct CollaborationLogoPair: View {
                 .resizable()
                 .renderingMode(.original)
                 .scaledToFit()
-                .frame(maxWidth: isWide ? 278 : 164, maxHeight: isWide ? 82 : 54)
+                .frame(width: isWide ? 222 : 132, height: isWide ? 82 : 56)
                 .accessibilityHidden(true)
                 .offset(x: logosVisible ? 0 : (isWide ? 52 : 34))
                 .opacity(logosVisible ? 1 : 0)
@@ -214,7 +209,7 @@ private struct CollaborationHomeMark: View {
                     .resizable()
                     .renderingMode(.original)
                     .scaledToFit()
-                    .frame(maxWidth: 128, maxHeight: 36)
+                    .frame(width: 132, height: 38)
                     .accessibilityHidden(true)
                 Text("×")
                     .font(.system(size: 17, weight: .light, design: .rounded))
@@ -223,7 +218,7 @@ private struct CollaborationHomeMark: View {
                     .resizable()
                     .renderingMode(.original)
                     .scaledToFit()
-                    .frame(maxWidth: 154, maxHeight: 42)
+                    .frame(width: 109, height: 38)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
