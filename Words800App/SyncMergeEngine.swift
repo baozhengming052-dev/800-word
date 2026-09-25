@@ -31,7 +31,9 @@ struct SyncConflict: Identifiable {
     var localDisplay: String { display(localValue) }
     var incomingDisplay: String { display(incomingValue) }
     private func display(_ value: String) -> String {
-        kind == .synonym ? PersonalSynonyms.displayText(value) : value
+        if kind == .synonym { return PersonalSynonyms.displayText(value) }
+        if kind == .note { return RichNote.decode(value)?.summary ?? "笔记内容无效" }
+        return value
     }
 }
 
@@ -315,7 +317,7 @@ enum SyncMergeEngine {
             case .incoming: value = conflict.incomingValue
             case .combined:
                 guard conflict.kind == .note else { throw SyncError.invalid("错误次数不能直接相加，请选择最终总数。") }
-                value = [conflict.localValue, conflict.incomingValue].filter { !$0.isEmpty }.joined(separator: "\n\n")
+                value = try RichNote.combined(conflict.localValue, conflict.incomingValue)
             }
             if conflict.kind == .note {
                 guard value.utf8.count <= 100000 else { throw SyncError.invalid("合并后的笔记过长，请选择其中一份，另一份仍保留在历史中。") }

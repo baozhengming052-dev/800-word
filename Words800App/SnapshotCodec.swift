@@ -27,11 +27,13 @@ enum SnapshotCodec {
         for question in catalog.questions {
             guard questionByID.updateValue(question, forKey: question.id) == nil else { throw PersonalLibraryError.invalid("题目编号重复。") }
         }
-        let kinds = Set(["answer", "favorite", "mastery", "note", "synonym", "errorAdjustment", "review", "rating"])
+        let kinds = Set(["answer", "favorite", "mastery", "note", "noteImage", "synonym", "errorAdjustment", "review", "rating"])
         var seen = Set<UUID>()
+        var images: [UUID: UUID] = [:]
         for event in snapshot.events {
             guard seen.insert(event.id).inserted, kinds.contains(event.kind), event.timestamp.isFinite,
-                  event.timestamp >= 0, event.timestamp <= now + 86_400_000, event.value.utf8.count <= 100_000 else {
+                  event.timestamp >= 0, event.timestamp <= now + 86_400_000,
+                  event.value.utf8.count <= (event.kind == "noteImage" ? 1_000_000 : 100_000) else {
                 throw PersonalLibraryError.invalid("备份中有无效或重复记录。")
             }
             // Validate optional references as well as the reference required by each event kind.
@@ -52,7 +54,24 @@ enum SnapshotCodec {
                 guard ["0", "1", "2"].contains(event.value) else { throw PersonalLibraryError.invalid("无效的学习反馈。") }
             case "synonym":
                 guard PersonalSynonyms.isValid(event.value) else { throw PersonalLibraryError.invalid("无效的近义词补充记录。") }
+            case "note":
+                guard RichNote.decode(event.value) != nil else { throw PersonalLibraryError.invalid("无效的图文笔记。") }
+            case "noteImage":
+                guard let id = event.wordID, let bytes = Data(base64Encoded: event.value),
+                      (100...750_000).contains(bytes.count), bytes.starts(with: [0xFF, 0xD8, 0xFF]),
+                      bytes.suffix(2).elementsEqual([0xFF, 0xD9]) else {
+                    throw PersonalLibraryError.invalid("无效的笔记图片。")
+                }
+                images[event.id] = id
             default: break
+            }
+        }
+        for event in snapshot.events where event.kind == "note" {
+            guard let note = RichNote.decode(event.value) else { continue }
+            for block in note.blocks where block.kind == .image {
+                guard let imageID = block.imageID, images[imageID] == event.wordID else {
+                    throw PersonalLibraryError.invalid("笔记引用的图片缺失或属于其他词条。")
+                }
             }
         }
         return catalog

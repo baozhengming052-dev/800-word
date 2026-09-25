@@ -100,7 +100,8 @@ def validate():
     check(pbx.count('PRODUCT_BUNDLE_IDENTIFIER = com.peanut13.words800;') == 2, 'Preserve installed app identity')
     check(info.get('NSLocalNetworkUsageDescription'), 'Nearby permission explanation')
     check('_words800-sync._tcp' in info.get('NSBonjourServices', []), 'Nearby Bonjour service')
-    check('NSCameraUsageDescription' not in info, 'No unused QR camera permission')
+    check(info.get('NSCameraUsageDescription'), 'Note camera permission explanation')
+    check(info.get('NSPhotoLibraryUsageDescription'), 'Note photo permission explanation')
     check('UISceneConfigurations' not in info.get('UIApplicationSceneManifest', {}), 'No nonexistent scene delegate')
     check('IPHONEOS_DEPLOYMENT_TARGET = 15.0;' in pbx, 'iOS 16.5 compatibility floor')
     icons_dir = app / 'Assets.xcassets/AppIcon.appiconset'

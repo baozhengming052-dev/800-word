@@ -2,6 +2,8 @@ import SwiftUI
 import AVFoundation
 import PDFKit
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 private struct NewWordQuestionRequest: Identifiable {
     let id: UUID
@@ -182,10 +184,7 @@ struct WordDetailView: View {
             WordMeaningSection(word: word)
             Section("个人笔记") {
                 if !record.personalNotes.isEmpty {
-                    Text(record.personalNotes)
-                        .lineSpacing(6)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    NoteContentView(value: record.personalNotes)
                 }
                 Button { openEditor(.notes) } label: {
                     Label(record.personalNotes.isEmpty ? "添加笔记" : "编辑笔记", systemImage: "note.text")
@@ -195,7 +194,8 @@ struct WordDetailView: View {
                         ForEach(record.noteHistory.reversed()) { event in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(event.date, style: .date).font(.caption).foregroundColor(.secondary)
-                                Text(event.value.isEmpty ? "（清空笔记）" : event.value).font(.subheadline).textSelection(.enabled)
+                                if event.value.isEmpty { Text("（清空笔记）").font(.subheadline) }
+                                else { NoteContentView(value: event.value) }
                             }
                         }
                     }
@@ -457,21 +457,262 @@ struct NotesEditorView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) private var dismiss
     let word: Word
-    @State private var notes = ""
+    @State private var blocks: [NoteBlock] = [.paragraph()]
+    @State private var pendingImages: [UUID: Data] = [:]
+    @State private var originalValue = ""
     @State private var loadedDraft = false
+    @State private var showAlbum = false
+    @State private var showCamera = false
+    @State private var insertionIndex = 0
+    @State private var processingImage = false
+    @State private var errorMessage = ""
+    @State private var showError = false
+    private var draft: RichNote { RichNote(blocks: blocks) }
     var body: some View {
         NavigationView {
-            TextEditor(text: $notes).padding().navigationTitle("\(word.word) · 笔记")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(blocks.indices, id: \.self) { index in
+                        let block = blocks[index]
+                        if block.kind == .text {
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextEditor(text: $blocks[index].text)
+                                    .frame(minHeight: 110)
+                                    .padding(6)
+                                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                                HStack {
+                                    Button { insertionIndex = index + 1; processingImage = true; showAlbum = true } label: {
+                                        Label("相册", systemImage: "photo.on.rectangle")
+                                    }
+                                    Button { openCamera(after: index) } label: {
+                                        Label("拍照", systemImage: "camera")
+                                    }
+                                    Spacer()
+                                    if blocks.count > 1 {
+                                        Button(role: .destructive) { blocks.remove(at: index) } label: {
+                                            Image(systemName: "trash")
+                                        }.accessibilityLabel("删除文字段落")
+                                    }
+                                }.buttonStyle(.borderless)
+                            }
+                        } else if let imageID = block.imageID {
+                            VStack(alignment: .trailing, spacing: 4) {
+                                NoteImageView(imageID: imageID, pending: pendingImages[imageID])
+                                Button("删除图片", role: .destructive) {
+                                    blocks.remove(at: index)
+                                    pendingImages.removeValue(forKey: imageID)
+                                }.font(.caption)
+                            }
+                        }
+                    }
+                    Button { blocks.append(.paragraph()) } label: { Label("添加文字段落", systemImage: "text.badge.plus") }
+                    Text("图片保存在笔记备份中；单张最多 750 KB，整份备份最多 20 MB。")
+                        .font(.footnote).foregroundColor(.secondary)
+                    if processingImage { ProgressView("正在处理图片…") }
+                }
+                .padding()
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
+            }
+            .navigationTitle("\(word.word) · 笔记")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("保存") { if dataManager.updateNotes(for: word.id, notes: notes) { dismiss() } }.disabled(notes.utf8.count > 100000) }
+                    ToolbarItem(placement: .confirmationAction) { Button("保存") { save() }.disabled(processingImage) }
                 }.onAppear {
                     guard !loadedDraft else { return }
-                    notes = dataManager.getStudyRecord(for: word.id).personalNotes
+                    originalValue = dataManager.getStudyRecord(for: word.id).personalNotes
+                    blocks = RichNote.decode(originalValue)?.blocks ?? [.paragraph()]
+                    if blocks.isEmpty { blocks = [.paragraph()] }
                     loadedDraft = true
                 }
+                .sheet(isPresented: $showAlbum) {
+                    NoteAlbumPicker(isPresented: $showAlbum) { image, attempted in
+                        handlePickedImage(image, attempted: attempted)
+                    }
+                }
+                .fullScreenCover(isPresented: $showCamera) {
+                    NoteCameraPicker(isPresented: $showCamera) { image, attempted in
+                        handlePickedImage(image, attempted: attempted)
+                    }
+                        .ignoresSafeArea()
+                }
+                .alert("笔记未能完成", isPresented: $showError) {
+                    Button("继续编辑", role: .cancel) { }
+                } message: { Text(errorMessage) }
         }.navigationViewStyle(.stack)
+    }
+    private func openCamera(after index: Int) {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            fail("此设备没有可用相机。")
+            return
+        }
+        insertionIndex = index + 1
+        processingImage = true
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: showCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { allowed in
+                DispatchQueue.main.async {
+                    if allowed { showCamera = true }
+                    else { processingImage = false; fail("没有相机权限。请在系统设置中允许本 App 使用相机。") }
+                }
+            }
+        case .denied, .restricted:
+            processingImage = false
+            fail("没有相机权限。请在系统设置中允许本 App 使用相机。")
+        @unknown default:
+            processingImage = false
+            fail("无法检查相机权限。")
+        }
+    }
+    private func handlePickedImage(_ image: UIImage?, attempted: Bool) {
+        guard let image = image else {
+            processingImage = false
+            if attempted { fail("无法读取所选图片，请重试。") }
+            return
+        }
+        processingImage = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let data = NoteImageCompressor.compress(image)
+            DispatchQueue.main.async {
+                processingImage = false
+                guard let data = data else { fail("图片处理失败或压缩后仍超过 750 KB，请换一张图片。") ; return }
+                let imageID = UUID()
+                pendingImages[imageID] = data
+                let position = min(insertionIndex, blocks.count)
+                blocks.insert(.image(imageID), at: position)
+                blocks.insert(.paragraph(), at: position + 1)
+            }
+        }
+    }
+    private func save() {
+        do {
+            try dataManager.updateRichNote(for: word.id, note: draft, newImages: pendingImages, expectedValue: originalValue)
+            dismiss()
+        } catch { fail(error.localizedDescription) }
+    }
+    private func fail(_ message: String) { errorMessage = message; showError = true }
+}
+
+private struct NoteContentView: View {
+    let value: String
+    var body: some View {
+        if let note = RichNote.decode(value) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(note.blocks) { block in
+                    if block.kind == .text, !block.text.isEmpty {
+                        Text(block.text).lineSpacing(6).fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    } else if let imageID = block.imageID {
+                        NoteImageView(imageID: imageID, pending: nil)
+                    }
+                }
+            }
+        } else { Text("笔记格式无法读取").foregroundColor(.red) }
+    }
+}
+
+private struct NoteImageView: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let imageID: UUID
+    let pending: Data?
+    @State private var image: UIImage?
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .frame(maxWidth: 700, maxHeight: 420)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("笔记图片")
+            } else {
+                Label("图片无法读取", systemImage: "photo")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .onAppear { load() }
+        .onChange(of: imageID) { _ in load() }
+    }
+    private func load() {
+        image = (pending ?? dataManager.noteImageData(for: imageID)).flatMap(UIImage.init(data:))
+    }
+}
+
+private struct NoteAlbumPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let picked: (UIImage?, Bool) -> Void
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        let controller = PHPickerViewController(configuration: configuration)
+        controller.delegate = context.coordinator
+        return controller
+    }
+    func updateUIViewController(_ controller: PHPickerViewController, context: Context) { }
+    func makeCoordinator() -> Coordinator { Coordinator(isPresented: $isPresented, picked: picked) }
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        @Binding var isPresented: Bool
+        let picked: (UIImage?, Bool) -> Void
+        init(isPresented: Binding<Bool>, picked: @escaping (UIImage?, Bool) -> Void) {
+            _isPresented = isPresented; self.picked = picked
+        }
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            isPresented = false
+            picker.dismiss(animated: true)
+            guard let provider = results.first?.itemProvider else { picked(nil, false); return }
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                DispatchQueue.main.async { self.picked(object as? UIImage, true) }
+            }
+        }
+    }
+}
+
+private struct NoteCameraPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let picked: (UIImage?, Bool) -> Void
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let controller = UIImagePickerController()
+        controller.sourceType = .camera
+        controller.mediaTypes = [UTType.image.identifier]
+        controller.delegate = context.coordinator
+        return controller
+    }
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) { }
+    func makeCoordinator() -> Coordinator { Coordinator(isPresented: $isPresented, picked: picked) }
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        @Binding var isPresented: Bool
+        let picked: (UIImage?, Bool) -> Void
+        init(isPresented: Binding<Bool>, picked: @escaping (UIImage?, Bool) -> Void) {
+            _isPresented = isPresented; self.picked = picked
+        }
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            let image = info[.originalImage] as? UIImage
+            isPresented = false
+            picker.dismiss(animated: true) { self.picked(image, true) }
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            isPresented = false; picker.dismiss(animated: true) { self.picked(nil, false) }
+        }
+    }
+}
+
+private enum NoteImageCompressor {
+    static func compress(_ image: UIImage) -> Data? {
+        let width = image.size.width
+        let height = image.size.height
+        guard width > 0, height > 0 else { return nil }
+        for edge in [CGFloat(1280), 1024, 800, 640] {
+            let scale = min(1, edge / max(width, height))
+            let size = CGSize(width: max(1, width * scale), height: max(1, height * scale))
+            let renderer = UIGraphicsImageRenderer(size: size)
+            let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+            for quality in [CGFloat(0.72), 0.60, 0.48] {
+                if let data = resized.jpegData(compressionQuality: quality), data.count <= 750_000 { return data }
+            }
+        }
+        return nil
     }
 }
 

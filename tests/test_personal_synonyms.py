@@ -31,7 +31,7 @@ class PersonalSynonymTests(unittest.TestCase):
         self.assertIn('case "synonym": r.personalSynonyms = PersonalSynonyms.decode(e.value); r.synonymHistory.append(e)', self.learning)
 
     def test_snapshot_and_incremental_writes_validate_the_payload(self):
-        self.assertIn('"note", "synonym", "errorAdjustment"', self.codec)
+        self.assertIn('"note", "noteImage", "synonym", "errorAdjustment"', self.codec)
         self.assertIn('case "synonym":\n                guard PersonalSynonyms.isValid(event.value)', self.codec)
         self.assertIn('"note", "synonym", "errorAdjustment"', self.data_manager)
         self.assertIn('case "synonym": return PersonalSynonyms.isValid(event.value)', self.data_manager)
@@ -68,8 +68,8 @@ class PersonalSynonymTests(unittest.TestCase):
         self.assertIn("补充近义词：", self.sync_model)
 
     def test_content_capability_rejects_older_peers(self):
-        self.assertIn("contentSchemaVersion: 4", self.exchange)
-        self.assertIn("header.contentSchemaVersion == 4", self.exchange)
+        self.assertIn("contentSchemaVersion: 5", self.exchange)
+        self.assertIn("header.contentSchemaVersion == 5", self.exchange)
 
 
 if __name__ == "__main__":

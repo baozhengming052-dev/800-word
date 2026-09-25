@@ -36,6 +36,13 @@ import CryptoKit
     private var errorWordCache: [ErrorWordSort: [Word]] = [:]
     private var wordIDs = Set<UUID>()
     private var eventIDs = Set<UUID>()
+    private var noteImageValues: [UUID: String] = [:]
+    private var noteImageWordIDs: [UUID: UUID] = [:]
+    private let noteImageCache: NSCache<NSString, NSData> = {
+        let cache = NSCache<NSString, NSData>()
+        cache.totalCostLimit = 8_000_000
+        return cache
+    }()
     private var lastEventTimestamp = 0.0
     private var reminderRefreshWorkItem: DispatchWorkItem?
     private(set) var libraryFingerprint = ""
@@ -252,6 +259,56 @@ import CryptoKit
         guard notes != getStudyRecord(for: id).personalNotes else { return true }
         return append(StudyEvent(wordID: id, kind: "note", value: notes))
     }
+    func noteImageData(for id: UUID) -> Data? {
+        let key = id.uuidString as NSString
+        if let cached = noteImageCache.object(forKey: key) { return cached as Data }
+        guard let value = noteImageValues[id], let data = Data(base64Encoded: value) else { return nil }
+        noteImageCache.setObject(data as NSData, forKey: key, cost: data.count)
+        return data
+    }
+    func updateRichNote(for id: UUID, note: RichNote, newImages: [UUID: Data], expectedValue: String) throws {
+        guard persistenceAvailable, let store = store else { throw AppError.text("记录尚未成功载入，无法保存笔记。") }
+        guard wordIDs.contains(id), getStudyRecord(for: id).personalNotes == expectedValue else {
+            throw AppError.text("这条笔记已在其他页面或同步中更新，请重新打开后编辑。")
+        }
+        let value = try note.encode()
+        let imageIDs = note.blocks.compactMap(\.imageID)
+        guard Set(imageIDs).count == imageIDs.count,
+              imageIDs.allSatisfy({ newImages[$0] != nil || noteImageWordIDs[$0] == id }),
+              newImages.keys.allSatisfy({ imageIDs.contains($0) && !eventIDs.contains($0) }) else {
+            throw AppError.text("笔记图片缺失或重复，请重新选择。")
+        }
+        guard newImages.values.allSatisfy({ (100...750_000).contains($0.count) && $0.starts(with: [0xFF, 0xD8, 0xFF])
+            && $0.suffix(2).elementsEqual([0xFF, 0xD9]) }) else {
+            throw AppError.text("图片过大或格式无效，请重新选择。")
+        }
+        guard value != expectedValue || !newImages.isEmpty else { return }
+        var proposed = snapshot
+        var stamp = max(Date().timeIntervalSince1970 * 1000, lastEventTimestamp + 0.001)
+        for imageID in imageIDs {
+            guard let bytes = newImages[imageID] else { continue }
+            proposed.events.append(StudyEvent(id: imageID, wordID: id, kind: "noteImage",
+                value: bytes.base64EncodedString(), timestamp: stamp))
+            stamp += 0.001
+        }
+        let noteEvent = StudyEvent(wordID: id, kind: "note", value: value, timestamp: stamp)
+        proposed.events.append(noteEvent)
+        guard proposed.events.count <= SnapshotCodec.maximumRecords - proposed.revisions.count else {
+            throw AppError.text("笔记历史已达到记录上限。")
+        }
+        try store.saveValidated(proposed)
+        objectWillChange.send()
+        let viewState = learningViewState
+        LearningEngine.apply(noteEvent, context: learningContext, records: &viewState.records, answers: &viewState.answers)
+        for event in proposed.events.suffix(newImages.count + 1) where event.kind == "noteImage" {
+            noteImageValues[event.id] = event.value
+            noteImageWordIDs[event.id] = id
+            eventIDs.insert(event.id)
+        }
+        eventIDs.insert(noteEvent.id)
+        snapshot = proposed; lastEventTimestamp = stamp
+        snapshotDidChange.send()
+    }
     /// 补充近义词按整份列表保存，和笔记一样只增量写一条事件，不重建词库、搜索索引和题目目录。
     func updateSynonyms(for id: UUID, synonyms: [ConfusableWord]) throws {
         let value = PersonalSynonyms.normalize(synonyms)
@@ -306,6 +363,13 @@ import CryptoKit
         wordsByID = Dictionary(uniqueKeysWithValues: words.map { ($0.id, $0) })
         wordIDs = Set(words.map(\.id))
         eventIDs = Set(snapshot.events.map(\.id))
+        noteImageValues = Dictionary(uniqueKeysWithValues: snapshot.events.compactMap { event in
+            event.kind == "noteImage" ? (event.id, event.value) : nil
+        })
+        noteImageWordIDs = Dictionary(uniqueKeysWithValues: snapshot.events.compactMap { event in
+            event.kind == "noteImage" ? event.wordID.map { (event.id, $0) } : nil
+        })
+        noteImageCache.removeAllObjects()
         activeQuestionsByWordID = [:]
         for question in activeQuestions {
             for id in learningContext.relatedWordIDs(for: question) {

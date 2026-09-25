@@ -24,6 +24,10 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>仅在你打开附近设备同步时，寻找并连接你的 iPhone 或 iPad，交换学习记录；不上传互联网。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>用于拍摄照片并插入个人笔记，照片只保存在本机笔记及你主动导出的备份中。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于从相册选择照片并插入个人笔记。</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_words800-sync._tcp</string>

@@ -213,8 +213,8 @@ struct SyncChange: Identifiable {
             var details: [String] = []
             if left.errorCount != right.errorCount { details.append("错误次数：\(left.errorCount) → \(right.errorCount)") }
             if left.personalNotes != right.personalNotes {
-                details.append("原笔记：" + (left.personalNotes.isEmpty ? "空" : left.personalNotes))
-                details.append("合并后：" + (right.personalNotes.isEmpty ? "空" : right.personalNotes))
+                details.append("原笔记：" + (RichNote.decode(left.personalNotes)?.summary ?? "无法读取"))
+                details.append("合并后：" + (RichNote.decode(right.personalNotes)?.summary ?? "无法读取"))
             }
             if left.personalSynonyms != right.personalSynonyms {
                 details.append("补充近义词：\(left.personalSynonyms.count) 条 → \(right.personalSynonyms.count) 条")

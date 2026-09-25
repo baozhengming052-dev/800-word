@@ -12,6 +12,8 @@ swiftc "${core[@]}" tests/LearningEngineTests.swift -o tmp/verification/learning
 tmp/verification/learning-tests Words800App/Resources/library.json
 swiftc "${core[@]}" Words800App/SyncMergeEngine.swift tests/SyncMergeEngineTests.swift -o tmp/verification/sync-merge-tests
 tmp/verification/sync-merge-tests Words800App/Resources/library.json
+swiftc "${core[@]}" Words800App/SyncMergeEngine.swift tests/RichNotesTests.swift -o tmp/verification/rich-notes-tests
+tmp/verification/rich-notes-tests Words800App/Resources/library.json
 swiftc "${core[@]}" Words800App/SyncMergeEngine.swift tests/PersonalSyncTests.swift -o tmp/verification/personal-sync-tests
 tmp/verification/personal-sync-tests Words800App/Resources/library.json
 swiftc "${core[@]}" Words800App/SyncMergeEngine.swift Words800App/PersonalTransactions.swift tests/PersonalTransactionTests.swift -o tmp/verification/personal-transaction-tests

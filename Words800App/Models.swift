@@ -146,6 +146,75 @@ struct StudyRecord {
     var streak = 0
     var reviewCount = 0
 }
+
+/// A note event holds the layout; immutable noteImage events hold JPEG bytes once.
+/// Plain strings remain valid notes from older releases.
+struct NoteBlock: Codable, Equatable, Identifiable {
+    enum Kind: String, Codable { case text, image }
+    var id: UUID
+    var kind: Kind
+    var text: String
+    var imageID: UUID?
+    static func paragraph(_ text: String = "") -> NoteBlock {
+        NoteBlock(id: UUID(), kind: .text, text: text, imageID: nil)
+    }
+    static func image(_ id: UUID) -> NoteBlock {
+        NoteBlock(id: UUID(), kind: .image, text: "", imageID: id)
+    }
+}
+
+struct RichNote: Codable, Equatable {
+    static let prefix = "WORDS800_RICH_NOTE_V1:"
+    var blocks: [NoteBlock]
+    static func decode(_ value: String) -> RichNote? {
+        guard value.hasPrefix(prefix) else { return RichNote(blocks: [.paragraph(value)]) }
+        let payload = String(value.dropFirst(prefix.count))
+        guard let bytes = payload.data(using: .utf8),
+              let note = try? JSONDecoder().decode(RichNote.self, from: bytes), note.isValid else { return nil }
+        return note
+    }
+    var isValid: Bool {
+        blocks.count <= 100 && Set(blocks.map(\.id)).count == blocks.count && blocks.allSatisfy { block in
+            switch block.kind {
+            case .text: return block.imageID == nil && block.text.utf8.count <= 100_000
+            case .image: return block.imageID != nil && block.text.isEmpty
+            }
+        }
+    }
+    func encode() throws -> String {
+        guard isValid else { throw PersonalLibraryError.invalid("笔记内容无效或段落过多。") }
+        if blocks.isEmpty { return "" }
+        if blocks.allSatisfy({ $0.kind == .text && $0.text.isEmpty }) { return "" }
+        if blocks.count == 1, blocks[0].kind == .text { return blocks[0].text }
+        let payload = String(decoding: try JSONEncoder().encode(self), as: UTF8.self)
+        let value = Self.prefix + payload
+        guard value.utf8.count <= 100_000 else { throw PersonalLibraryError.invalid("笔记文字不能超过 100,000 UTF-8 字节。") }
+        return value
+    }
+    var summary: String {
+        let text = blocks.map { $0.kind == .image ? "[图片]" : $0.text }.joined(separator: "\n")
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "空笔记" : text
+    }
+    static func combined(_ left: String, _ right: String) throws -> String {
+        if !left.hasPrefix(prefix) && !right.hasPrefix(prefix) {
+            let value = [left, right].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            guard value.utf8.count <= 100_000 else { throw PersonalLibraryError.invalid("合并后的笔记过长。") }
+            return value
+        }
+        guard let a = decode(left), let b = decode(right) else { throw PersonalLibraryError.invalid("笔记内容无效。") }
+        var blocks = left.isEmpty ? [] : a.blocks
+        if !blocks.isEmpty && !b.blocks.isEmpty { blocks.append(.paragraph("")) }
+        if !right.isEmpty {
+            var used = Set(blocks.map(\.id))
+            for var block in b.blocks {
+                if used.contains(block.id) { block.id = UUID() }
+                used.insert(block.id)
+                blocks.append(block)
+            }
+        }
+        return try RichNote(blocks: blocks).encode()
+    }
+}
 struct QuestionRecord: Identifiable {
     let id: UUID
     let questionId: UUID
