@@ -248,6 +248,7 @@ struct HomeView: View {
     @EnvironmentObject var dataManager: DataManager
     @AppStorage("dailyGoal") private var dailyGoal = 20
     @State private var showLearn = false
+    @State private var dailyStudyWords: [Word] = []
     @State private var showReview = false
     @State private var showReminderSetup = false
     var body: some View {
@@ -276,10 +277,13 @@ struct HomeView: View {
                             Text("/ \(dailyGoal) 词").foregroundColor(.secondary)
                         }
                         ProgressView(value: Double(min(dailyGoal, todayLearned)), total: Double(max(1, dailyGoal)))
-                        Button { showLearn = true } label: {
+                        Button {
+                            dailyStudyWords = Array(newWords.shuffled().prefix(max(1, dailyGoal - todayLearned)))
+                            showLearn = true
+                        } label: {
                             Label("开始 / 继续学词", systemImage: "play.fill").frame(maxWidth: .infinity).padding(.vertical, 8)
                         }.buttonStyle(.borderedProminent)
-                        Text("先回忆，再看释义。认识程度由你自己判断。")
+                        Text("新词乱序抽取；先回忆，再看释义。认识程度由你自己判断。")
                             .font(.caption).foregroundColor(.secondary)
                     }.padding(20).background(AppStyle.accent.opacity(0.08)).cornerRadius(20)
                     HStack(spacing: 12) {
@@ -320,7 +324,7 @@ struct HomeView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("政名政利公考").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showLearn) {
-                StudySessionView(title: "每日学词", words: Array(newWords.prefix(max(1, dailyGoal - todayLearned))))
+                StudySessionView(title: "每日学词", words: dailyStudyWords)
             }
             .sheet(isPresented: $showReview) {
                 StudySessionView(title: "巩固薄弱词", words: Array(reviewWords.prefix(dailyGoal)))

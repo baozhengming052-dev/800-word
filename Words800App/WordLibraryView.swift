@@ -988,7 +988,14 @@ struct StudySessionView: View {
             if title != "提醒巩固", let saved = UserDefaults.standard.dictionary(forKey: sessionKey),
                let ids = saved["ids"] as? [String], let progress = saved["index"] as? Int, progress >= 0, progress < ids.count {
                 let restored = ids.compactMap { UUID(uuidString: $0) }.compactMap { dataManager.activeWord(for: $0) }
-                if restored.count == ids.count { queue = restored; index = progress } else { queue = words }
+                if restored.count == ids.count {
+                    if title == "每日学词" && saved["randomized"] as? Bool != true {
+                        queue = Array(restored.prefix(progress)) + restored.dropFirst(progress).shuffled()
+                    } else {
+                        queue = restored
+                    }
+                    index = progress
+                } else { queue = words }
             } else { queue = words }
             saveProgress()
         }
@@ -1023,7 +1030,11 @@ struct StudySessionView: View {
     }
     private func saveProgress() {
         if index >= queue.count { UserDefaults.standard.removeObject(forKey: sessionKey) }
-        else { UserDefaults.standard.set(["ids": queue.map { $0.id.uuidString }, "index": index], forKey: sessionKey) }
+        else {
+            var progress: [String: Any] = ["ids": queue.map { $0.id.uuidString }, "index": index]
+            if title == "每日学词" { progress["randomized"] = true }
+            UserDefaults.standard.set(progress, forKey: sessionKey)
+        }
     }
 }
 private struct StudyRelatedQuestionsCard: View {
