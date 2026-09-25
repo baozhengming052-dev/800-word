@@ -30,6 +30,14 @@ import Foundation
         assert(RichNote.decode(noteA.value)?.blocks[1].imageID == imageA.id)
         let restored = try JSONDecoder().decode(StudySnapshot.self, from: JSONEncoder().encode(local))
         try check(restored)
+        let largerJPEG = Data([UInt8(0xFF), 0xD8, 0xFF] + Array(repeating: 0, count: 1_000_000) + [0xFF, 0xD9])
+        try check(StudySnapshot(events: [StudyEvent(wordID: word.id, kind: "noteImage",
+            value: largerJPEG.base64EncodedString(), timestamp: stamp)]))
+        let oversizedJPEG = Data([UInt8(0xFF), 0xD8, 0xFF] + Array(repeating: 0, count: NoteImageLimits.maximumBytes) + [0xFF, 0xD9])
+        rejects("An image above 5 MB must reject backup") {
+            try check(StudySnapshot(events: [StudyEvent(wordID: word.id, kind: "noteImage",
+                value: oversizedJPEG.base64EncodedString(), timestamp: stamp)]))
+        }
         rejects("Missing image must reject backup") { try check(StudySnapshot(events: [noteA])) }
         let foreign = StudyEvent(id: imageA.id, wordID: other.id, kind: "noteImage",
             value: jpeg.base64EncodedString(), timestamp: stamp)

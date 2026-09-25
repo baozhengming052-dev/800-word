@@ -33,7 +33,7 @@ final class NearbyTransport: ObservableObject {
     var onReady: (() -> Void)?
     var onData: ((Data) -> Void)?
 
-    static let maximumPayload = 20 * 1_024 * 1_024
+    static let maximumPayload = SnapshotCodec.maximumBytes + 2_052
     private static let chunkSize = 60 * 1_024
     nonisolated fileprivate static let maximumFrame = NearbySecureChannel.maximumPacket + 1
     private static let serviceType = "words800-sync"

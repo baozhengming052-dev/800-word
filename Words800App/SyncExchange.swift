@@ -11,10 +11,10 @@ struct SyncPacket {
     private struct Header: Codable { let version: Int; let contentSchemaVersion: Int?; let id: UUID; let kind: Kind; let digest: String?; let reason: String?; let libraryFingerprint: String? }
 
     // Raw payload follows a bounded JSON header; no base64 expansion of a large backup.
-    // 内容能力 5 = v3 快照 + 图文笔记图片事件；旧版须先升级再同步。
+    // 内容能力 6 = 更大图文笔记与备份上限；旧版须先升级再同步。
     func encode() throws -> Data {
         try validate()
-        let header = try JSONEncoder().encode(Header(version: 2, contentSchemaVersion: 5, id: id, kind: kind, digest: digest, reason: reason, libraryFingerprint: libraryFingerprint))
+        let header = try JSONEncoder().encode(Header(version: 2, contentSchemaVersion: 6, id: id, kind: kind, digest: digest, reason: reason, libraryFingerprint: libraryFingerprint))
         guard header.count <= 2048 else { throw SyncError.invalid("同步消息头过长。") }
         let length = UInt32(header.count)
         var bytes = Data([UInt8((length >> 24) & 255), UInt8((length >> 16) & 255), UInt8((length >> 8) & 255), UInt8(length & 255)])
@@ -23,11 +23,11 @@ struct SyncPacket {
     }
 
     static func decode(_ data: Data) throws -> SyncPacket {
-        guard (5...20_002_052).contains(data.count) else { throw SyncError.invalid("同步消息大小无效。") }
+        guard (5...(SnapshotCodec.maximumBytes + 2_052)).contains(data.count) else { throw SyncError.invalid("同步消息大小无效。") }
         let length = data.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
         guard (1...2048).contains(length), data.count >= 4 + length else { throw SyncError.invalid("同步消息不完整。") }
         let header = try JSONDecoder().decode(Header.self, from: data.subdata(in: 4..<(4 + length)))
-        guard header.version == 2, header.contentSchemaVersion == 5 else { throw SyncError.invalid("同步协议或个人内容格式不一致，请更新两台设备的 App。") }
+        guard header.version == 2, header.contentSchemaVersion == 6 else { throw SyncError.invalid("同步协议或个人内容格式不一致，请更新两台设备的 App。") }
         let packet = SyncPacket(id: header.id, kind: header.kind, payload: data.subdata(in: (4 + length)..<data.count), digest: header.digest, reason: header.reason, libraryFingerprint: header.libraryFingerprint)
         try packet.validate()
         return packet
@@ -41,7 +41,7 @@ struct SyncPacket {
 
     private func validate() throws {
         if kind == .snapshot || kind == .proposal {
-            guard !payload.isEmpty, payload.count <= 20_000_000 else { throw SyncError.invalid("学习备份为空或超过 20 MB。") }
+            guard !payload.isEmpty, payload.count <= SnapshotCodec.maximumBytes else { throw SyncError.invalid("学习备份为空或超过 100 MB。") }
         } else if !payload.isEmpty { throw SyncError.invalid("控制消息不应包含学习数据。") }
         if kind == .accepted || kind == .completed {
             guard let digest = digest, digest.count == 64, digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {

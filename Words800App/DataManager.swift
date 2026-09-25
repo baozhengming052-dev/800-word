@@ -40,7 +40,7 @@ import CryptoKit
     private var noteImageWordIDs: [UUID: UUID] = [:]
     private let noteImageCache: NSCache<NSString, NSData> = {
         let cache = NSCache<NSString, NSData>()
-        cache.totalCostLimit = 8_000_000
+        cache.totalCostLimit = 24_000_000
         return cache
     }()
     private var lastEventTimestamp = 0.0
@@ -278,7 +278,7 @@ import CryptoKit
               newImages.keys.allSatisfy({ imageIDs.contains($0) && !eventIDs.contains($0) }) else {
             throw AppError.text("笔记图片缺失或重复，请重新选择。")
         }
-        guard newImages.values.allSatisfy({ (100...750_000).contains($0.count) && $0.starts(with: [0xFF, 0xD8, 0xFF])
+        guard newImages.values.allSatisfy({ (100...NoteImageLimits.maximumBytes).contains($0.count) && $0.starts(with: [0xFF, 0xD8, 0xFF])
             && $0.suffix(2).elementsEqual([0xFF, 0xD9]) }) else {
             throw AppError.text("图片过大或格式无效，请重新选择。")
         }

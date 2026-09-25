@@ -1,7 +1,7 @@
 import Foundation
 
 enum SnapshotCodec {
-    static let maximumBytes = 20_000_000
+    static let maximumBytes = 100_000_000
     static let maximumRecords = 100_000
 
     static func decode(data: Data, builtInWords: [Word], builtInQuestions: [Question],
@@ -33,7 +33,7 @@ enum SnapshotCodec {
         for event in snapshot.events {
             guard seen.insert(event.id).inserted, kinds.contains(event.kind), event.timestamp.isFinite,
                   event.timestamp >= 0, event.timestamp <= now + 86_400_000,
-                  event.value.utf8.count <= (event.kind == "noteImage" ? 1_000_000 : 100_000) else {
+                  event.value.utf8.count <= (event.kind == "noteImage" ? NoteImageLimits.maximumEventBytes : 100_000) else {
                 throw PersonalLibraryError.invalid("备份中有无效或重复记录。")
             }
             // Validate optional references as well as the reference required by each event kind.
@@ -58,7 +58,7 @@ enum SnapshotCodec {
                 guard RichNote.decode(event.value) != nil else { throw PersonalLibraryError.invalid("无效的图文笔记。") }
             case "noteImage":
                 guard let id = event.wordID, let bytes = Data(base64Encoded: event.value),
-                      (100...750_000).contains(bytes.count), bytes.starts(with: [0xFF, 0xD8, 0xFF]),
+                      (100...NoteImageLimits.maximumBytes).contains(bytes.count), bytes.starts(with: [0xFF, 0xD8, 0xFF]),
                       bytes.suffix(2).elementsEqual([0xFF, 0xD9]) else {
                     throw PersonalLibraryError.invalid("无效的笔记图片。")
                 }

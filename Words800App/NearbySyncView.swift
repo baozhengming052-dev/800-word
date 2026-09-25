@@ -145,7 +145,7 @@ struct SyncConflictSections: View {
     }
     private func footnote(_ conflict: SyncConflict) -> String {
         switch conflict.kind {
-        case .note: return "旧笔记仍保留在词条的笔记历史中。"
+        case .note: return "旧版本仍随备份保留，不会因本次选择被删除。"
         case .synonym: return "合并会保留两份里不重复的近义词；旧内容仍保留在词条的近义词修改历史中。"
         case .errorCount: return "选择最终错误总数，不会删除历史错题。两台的总数不会直接相加。"
         }

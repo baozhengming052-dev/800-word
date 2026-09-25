@@ -3,6 +3,7 @@ import AVFoundation
 import PDFKit
 import UIKit
 import PhotosUI
+import ImageIO
 import UniformTypeIdentifiers
 
 private struct NewWordQuestionRequest: Identifiable {
@@ -184,20 +185,21 @@ struct WordDetailView: View {
             WordMeaningSection(word: word)
             Section("个人笔记") {
                 if !record.personalNotes.isEmpty {
-                    NoteContentView(value: record.personalNotes)
-                }
-                Button { openEditor(.notes) } label: {
-                    Label(record.personalNotes.isEmpty ? "添加笔记" : "编辑笔记", systemImage: "note.text")
-                }
-                if record.noteHistory.count > 1 {
-                    DisclosureGroup("笔记历史（\(record.noteHistory.count)）") {
-                        ForEach(record.noteHistory.reversed()) { event in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(event.date, style: .date).font(.caption).foregroundColor(.secondary)
-                                if event.value.isEmpty { Text("（清空笔记）").font(.subheadline) }
-                                else { NoteContentView(value: event.value) }
+                    NavigationLink {
+                        NoteReadingView(word: word)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(notePreview).lineLimit(2).foregroundColor(.primary)
+                            if noteImageCount > 0 {
+                                Label("\(noteImageCount) 张图片", systemImage: "photo")
+                                    .font(.caption).foregroundColor(.secondary)
                             }
-                        }
+                            Text("点按查看完整笔记").font(.caption).foregroundColor(.secondary)
+                        }.padding(.vertical, 4)
+                    }
+                } else {
+                    Button { openEditor(.notes) } label: {
+                        Label("添加笔记", systemImage: "note.text")
                     }
                 }
             }
@@ -276,6 +278,15 @@ struct WordDetailView: View {
             Button("取消", role: .cancel) { archiveRequest = nil }
         }
         .onDisappear { speaker.stop() }
+    }
+
+    private var notePreview: String {
+        let blocks = RichNote.decode(record.personalNotes)?.blocks ?? []
+        let firstText = blocks.first { $0.kind == .text && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?.text ?? ""
+        return firstText.isEmpty ? "图片笔记" : String(firstText.prefix(120))
+    }
+    private var noteImageCount: Int {
+        RichNote.decode(record.personalNotes)?.blocks.filter { $0.kind == .image }.count ?? 0
     }
 
     private func openEditor(_ kind: WordEditorKind) {
@@ -453,6 +464,32 @@ struct ErrorCountEditor: View {
         }.navigationViewStyle(.stack)
     }
 }
+struct NoteReadingView: View {
+    @EnvironmentObject private var dataManager: DataManager
+    let word: Word
+    @State private var editing = false
+    private var value: String { dataManager.getStudyRecord(for: word.id).personalNotes }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if value.isEmpty {
+                    Text("还没有笔记").foregroundColor(.secondary)
+                } else {
+                    NoteContentView(value: value)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("\(word.word) · 笔记")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .primaryAction) { Button("编辑") { editing = true } } }
+        .sheet(isPresented: $editing) { NotesEditorView(word: word) }
+    }
+}
+
 struct NotesEditorView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) private var dismiss
@@ -463,6 +500,8 @@ struct NotesEditorView: View {
     @State private var loadedDraft = false
     @State private var showAlbum = false
     @State private var showCamera = false
+    @State private var selectedImage: UIImage?
+    @State private var selectionAttempted = false
     @State private var insertionIndex = 0
     @State private var processingImage = false
     @State private var errorMessage = ""
@@ -483,10 +522,10 @@ struct NotesEditorView: View {
                                 HStack {
                                     Button { insertionIndex = index + 1; processingImage = true; showAlbum = true } label: {
                                         Label("相册", systemImage: "photo.on.rectangle")
-                                    }
+                                    }.disabled(processingImage)
                                     Button { openCamera(after: index) } label: {
                                         Label("拍照", systemImage: "camera")
-                                    }
+                                    }.disabled(processingImage)
                                     Spacer()
                                     if blocks.count > 1 {
                                         Button(role: .destructive) { blocks.remove(at: index) } label: {
@@ -506,7 +545,7 @@ struct NotesEditorView: View {
                         }
                     }
                     Button { blocks.append(.paragraph()) } label: { Label("添加文字段落", systemImage: "text.badge.plus") }
-                    Text("图片保存在笔记备份中；单张最多 750 KB，整份备份最多 20 MB。")
+                    Text("每张图片最多 5 MB；所有学习记录和笔记的备份合计最多 100 MB。")
                         .font(.footnote).foregroundColor(.secondary)
                     if processingImage { ProgressView("正在处理图片…") }
                 }
@@ -526,14 +565,19 @@ struct NotesEditorView: View {
                     if blocks.isEmpty { blocks = [.paragraph()] }
                     loadedDraft = true
                 }
-                .sheet(isPresented: $showAlbum) {
-                    NoteAlbumPicker(isPresented: $showAlbum) { image, attempted in
-                        handlePickedImage(image, attempted: attempted)
+                .sheet(isPresented: $showAlbum, onDismiss: finishPhotoSelection) {
+                    NoteAlbumPicker { image, attempted in
+                        selectedImage = image
+                        selectionAttempted = attempted
+                        showAlbum = false
                     }
+                    .interactiveDismissDisabled(processingImage)
                 }
-                .fullScreenCover(isPresented: $showCamera) {
-                    NoteCameraPicker(isPresented: $showCamera) { image, attempted in
-                        handlePickedImage(image, attempted: attempted)
+                .fullScreenCover(isPresented: $showCamera, onDismiss: finishPhotoSelection) {
+                    NoteCameraPicker { image, attempted in
+                        selectedImage = image
+                        selectionAttempted = attempted
+                        showCamera = false
                     }
                         .ignoresSafeArea()
                 }
@@ -577,7 +621,10 @@ struct NotesEditorView: View {
             let data = NoteImageCompressor.compress(image)
             DispatchQueue.main.async {
                 processingImage = false
-                guard let data = data else { fail("图片处理失败或压缩后仍超过 750 KB，请换一张图片。") ; return }
+                guard let data = data else {
+                    fail("图片处理失败或压缩后仍超过 5 MB，请换一张图片。")
+                    return
+                }
                 let imageID = UUID()
                 pendingImages[imageID] = data
                 let position = min(insertionIndex, blocks.count)
@@ -585,6 +632,13 @@ struct NotesEditorView: View {
                 blocks.insert(.paragraph(), at: position + 1)
             }
         }
+    }
+    private func finishPhotoSelection() {
+        let image = selectedImage
+        let attempted = selectionAttempted
+        selectedImage = nil
+        selectionAttempted = false
+        handlePickedImage(image, attempted: attempted)
     }
     private func save() {
         do {
@@ -618,6 +672,7 @@ private struct NoteImageView: View {
     let imageID: UUID
     let pending: Data?
     @State private var image: UIImage?
+    @State private var loading = false
     var body: some View {
         Group {
             if let image = image {
@@ -625,6 +680,8 @@ private struct NoteImageView: View {
                     .frame(maxWidth: 700, maxHeight: 420)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .accessibilityLabel("笔记图片")
+            } else if loading {
+                ProgressView("正在载入图片")
             } else {
                 Label("图片无法读取", systemImage: "photo")
                     .foregroundColor(.secondary)
@@ -634,12 +691,28 @@ private struct NoteImageView: View {
         .onChange(of: imageID) { _ in load() }
     }
     private func load() {
-        image = (pending ?? dataManager.noteImageData(for: imageID)).flatMap(UIImage.init(data:))
+        image = nil
+        guard let data = pending ?? dataManager.noteImageData(for: imageID) else { loading = false; return }
+        loading = true
+        let requestedID = imageID
+        DispatchQueue.global(qos: .userInitiated).async {
+            let source = CGImageSourceCreateWithData(data as CFData, nil)
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 1_600
+            ]
+            let thumbnail = source.flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, options as CFDictionary) }
+            DispatchQueue.main.async {
+                guard imageID == requestedID else { return }
+                image = thumbnail.map { UIImage(cgImage: $0) }
+                loading = false
+            }
+        }
     }
 }
 
 private struct NoteAlbumPicker: UIViewControllerRepresentable {
-    @Binding var isPresented: Bool
     let picked: (UIImage?, Bool) -> Void
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var configuration = PHPickerConfiguration()
@@ -650,16 +723,11 @@ private struct NoteAlbumPicker: UIViewControllerRepresentable {
         return controller
     }
     func updateUIViewController(_ controller: PHPickerViewController, context: Context) { }
-    func makeCoordinator() -> Coordinator { Coordinator(isPresented: $isPresented, picked: picked) }
+    func makeCoordinator() -> Coordinator { Coordinator(picked: picked) }
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        @Binding var isPresented: Bool
         let picked: (UIImage?, Bool) -> Void
-        init(isPresented: Binding<Bool>, picked: @escaping (UIImage?, Bool) -> Void) {
-            _isPresented = isPresented; self.picked = picked
-        }
+        init(picked: @escaping (UIImage?, Bool) -> Void) { self.picked = picked }
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            isPresented = false
-            picker.dismiss(animated: true)
             guard let provider = results.first?.itemProvider else { picked(nil, false); return }
             provider.loadObject(ofClass: UIImage.self) { object, _ in
                 DispatchQueue.main.async { self.picked(object as? UIImage, true) }
@@ -669,7 +737,6 @@ private struct NoteAlbumPicker: UIViewControllerRepresentable {
 }
 
 private struct NoteCameraPicker: UIViewControllerRepresentable {
-    @Binding var isPresented: Bool
     let picked: (UIImage?, Bool) -> Void
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let controller = UIImagePickerController()
@@ -679,21 +746,17 @@ private struct NoteCameraPicker: UIViewControllerRepresentable {
         return controller
     }
     func updateUIViewController(_ controller: UIImagePickerController, context: Context) { }
-    func makeCoordinator() -> Coordinator { Coordinator(isPresented: $isPresented, picked: picked) }
+    func makeCoordinator() -> Coordinator { Coordinator(picked: picked) }
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        @Binding var isPresented: Bool
         let picked: (UIImage?, Bool) -> Void
-        init(isPresented: Binding<Bool>, picked: @escaping (UIImage?, Bool) -> Void) {
-            _isPresented = isPresented; self.picked = picked
-        }
+        init(picked: @escaping (UIImage?, Bool) -> Void) { self.picked = picked }
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             let image = info[.originalImage] as? UIImage
-            isPresented = false
-            picker.dismiss(animated: true) { self.picked(image, true) }
+            picked(image, true)
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            isPresented = false; picker.dismiss(animated: true) { self.picked(nil, false) }
+            picked(nil, false)
         }
     }
 }
@@ -703,13 +766,18 @@ private enum NoteImageCompressor {
         let width = image.size.width
         let height = image.size.height
         guard width > 0, height > 0 else { return nil }
-        for edge in [CGFloat(1280), 1024, 800, 640] {
+        var lastSize: CGSize?
+        for edge in [CGFloat(2400), 2000, 1600, 1280] {
             let scale = min(1, edge / max(width, height))
             let size = CGSize(width: max(1, width * scale), height: max(1, height * scale))
-            let renderer = UIGraphicsImageRenderer(size: size)
+            guard size != lastSize else { continue }
+            lastSize = size
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: size, format: format)
             let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
-            for quality in [CGFloat(0.72), 0.60, 0.48] {
-                if let data = resized.jpegData(compressionQuality: quality), data.count <= 750_000 { return data }
+            for quality in [CGFloat(0.86), 0.76, 0.65] {
+                if let data = resized.jpegData(compressionQuality: quality), data.count <= NoteImageLimits.maximumBytes { return data }
             }
         }
         return nil

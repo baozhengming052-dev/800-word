@@ -68,8 +68,8 @@ class PersonalSynonymTests(unittest.TestCase):
         self.assertIn("补充近义词：", self.sync_model)
 
     def test_content_capability_rejects_older_peers(self):
-        self.assertIn("contentSchemaVersion: 5", self.exchange)
-        self.assertIn("header.contentSchemaVersion == 5", self.exchange)
+        self.assertIn("contentSchemaVersion: 6", self.exchange)
+        self.assertIn("header.contentSchemaVersion == 6", self.exchange)
 
 
 if __name__ == "__main__":

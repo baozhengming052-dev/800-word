@@ -67,7 +67,7 @@ struct ProfileView: View {
                         let access = url.startAccessingSecurityScopedResource()
                         defer { if access { url.stopAccessingSecurityScopedResource() } }
                         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                        guard size <= 20_000_000 else { throw DataManager.AppError.text("备份文件超过 20 MB。") }
+                        guard size <= SnapshotCodec.maximumBytes else { throw DataManager.AppError.text("备份文件超过 100 MB。") }
                         importPreview = try dataManager.previewImport(Data(contentsOf: url))
                     } catch { dataManager.message = "导入失败：\(error.localizedDescription)" }
                 }

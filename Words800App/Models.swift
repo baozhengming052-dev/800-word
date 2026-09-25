@@ -215,6 +215,11 @@ struct RichNote: Codable, Equatable {
         return try RichNote(blocks: blocks).encode()
     }
 }
+
+enum NoteImageLimits {
+    static let maximumBytes = 5_000_000
+    static let maximumEventBytes = ((maximumBytes + 2) / 3) * 4
+}
 struct QuestionRecord: Identifiable {
     let id: UUID
     let questionId: UUID

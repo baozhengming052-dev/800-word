@@ -220,7 +220,7 @@ import Foundation
         }
         let large = String(repeating: "x", count: 100_000)
         rejects("Union must enforce encoded size after merging individually valid inputs") {
-            _ = try SyncMergeEngine.preview(local: StudySnapshot(events: events(101, value: large)), incoming: StudySnapshot(events: events(101, value: large)), words: [builtIn], questions: [])
+            _ = try SyncMergeEngine.preview(local: StudySnapshot(events: events(501, value: large)), incoming: StudySnapshot(events: events(501, value: large)), words: [builtIn], questions: [])
         }
         let leftNote = StudyEvent(wordID: builtIn.id, kind: "note", value: "左", timestamp: t + 1)
         let rightNote = StudyEvent(wordID: builtIn.id, kind: "note", value: "右", timestamp: t + 2)
@@ -229,11 +229,11 @@ import Foundation
         rejects("Learning conflict resolution cannot append beyond the record ceiling") {
             _ = try SyncMergeEngine.resolve(eventLimit, choices: [eventLimit.conflicts[0].id: .local], now: t + 100)
         }
-        // Make a valid union exactly 100 bytes below 20 MB; a new revision necessarily exceeds it.
+        // Make a valid union exactly 100 bytes below the backup ceiling.
         let fillerID = UUID()
-        var nearBytes = StudySnapshot(events: events(199, value: large) + [StudyEvent(id: fillerID, wordID: builtIn.id, kind: "note", value: "", timestamp: t)],
+        var nearBytes = StudySnapshot(events: events(998, value: large) + [StudyEvent(id: fillerID, wordID: builtIn.id, kind: "note", value: "", timestamp: t)],
             revisions: [root, edit, archived])
-        let padding = 19_999_900 - (try JSONEncoder().encode(nearBytes).count)
+        let padding = SnapshotCodec.maximumBytes - 100 - (try JSONEncoder().encode(nearBytes).count)
         assert((1...100_000).contains(padding), "Fixture's final event remains within its independent byte limit")
         nearBytes.events[nearBytes.events.count - 1] = StudyEvent(id: fillerID, wordID: builtIn.id, kind: "note", value: String(repeating: "p", count: padding), timestamp: t)
         let bytePlan = try SyncMergeEngine.preview(local: nearBytes, incoming: StudySnapshot(), words: [builtIn], questions: [])
@@ -250,9 +250,9 @@ import Foundation
         nearNotes.events.append(StudyEvent(wordID: builtIn.id, kind: "note", value: String(repeating: "l", count: 5_000), timestamp: t + 10))
         let remoteNote = StudyEvent(wordID: builtIn.id, kind: "note", value: String(repeating: "r", count: 5_000), timestamp: t + 11)
         nearNotes.events.append(remoteNote)
-        let notePadding = padding + 19_999_900 - (try JSONEncoder().encode(nearNotes).count)
+        let notePadding = padding + SnapshotCodec.maximumBytes - 100 - (try JSONEncoder().encode(nearNotes).count)
         assert((1...100_000).contains(notePadding))
-        nearNotes.events[199] = StudyEvent(id: fillerID, wordID: builtIn.id, kind: "note", value: String(repeating: "p", count: notePadding), timestamp: t)
+        nearNotes.events[998] = StudyEvent(id: fillerID, wordID: builtIn.id, kind: "note", value: String(repeating: "p", count: notePadding), timestamp: t)
         let noteBytePlan = try SyncMergeEngine.preview(local: StudySnapshot(events: Array(nearNotes.events.dropLast())),
             incoming: StudySnapshot(events: [remoteNote]), words: [builtIn], questions: [])
         rejects("Appending a learning resolution must enforce the encoded-size ceiling") {
